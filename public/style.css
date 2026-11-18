@@ -9,6 +9,7 @@
   --line: #c6d2db;
   --accent: #c92d36;
   --accent-dark: #a42028;
+  --ahead: #167447;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -490,7 +491,7 @@ body.overlay {
   left: 96px;
   right: 96px;
   bottom: 88px;
-  min-height: 152px;
+  height: 184px;
   display: flex;
   color: var(--white);
   filter: drop-shadow(0 8px 18px #00000040);
@@ -498,11 +499,64 @@ body.overlay {
 .bib-block {
   background: var(--accent);
   width: 148px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   border-bottom: 6px solid var(--accent-dark);
+}
+.racer-stack {
+  position: absolute;
+  bottom: calc(100% + 60px);
+  left: 0;
+  width: min(100%, 960px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.compact-racer {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) 190px;
+  gap: 20px;
+  align-items: center;
+  min-height: 58px;
+  padding: 12px 20px;
+  border-left: 4px solid var(--accent);
+  background: var(--navy);
+  color: var(--white);
+}
+.compact-bib,
+.compact-name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.compact-bib {
+  font: 600 22px var(--number-font);
+  color: var(--ice);
+}
+.compact-name {
+  font-size: 24px;
+  font-weight: 600;
+}
+.compact-time {
+  font: 700 28px var(--number-font);
+  text-align: right;
+}
+.terminal-status {
+  color: var(--accent-dark);
+  letter-spacing: 4px;
+}
+.presentation-settings {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  margin: var(--space-6) 0;
+  padding: var(--space-6) 0 var(--space-4);
+}
+.presentation-settings > .hint {
+  margin-top: var(--space-3);
 }
 .bib-label {
   font-size: 13px;
@@ -511,6 +565,11 @@ body.overlay {
 }
 .bib-block strong {
   font: 700 56px/1.2 var(--number-font);
+  display: block;
+  max-width: calc(100% - 16px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .athlete-block {
   background: var(--navy);
@@ -518,6 +577,10 @@ body.overlay {
   padding: 22px 32px;
   border-bottom: 6px solid var(--navy-soft);
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
 }
 .overlay-badge {
   display: inline-block;
@@ -528,9 +591,35 @@ body.overlay {
   margin-bottom: 8px;
 }
 .overlay-badge.demo {
+  background: transparent;
+  color: var(--ice);
+  border: 1px solid var(--ice);
+  padding: 3px 8px;
+}
+.discipline-badge {
+  display: inline-block;
   background: var(--accent);
   color: var(--white);
-  padding: 3px 8px;
+  padding: 4px 10px;
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+.context-markers {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+.board-metadata {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.board-metadata .overlay-badge {
+  margin: 0;
 }
 .athlete-name {
   font-size: 38px;
@@ -539,17 +628,63 @@ body.overlay {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100%;
 }
-.athlete-category {
+.athlete-club {
   font-size: 18px;
   color: var(--ice);
   margin-top: 6px;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.category-badge {
+  background: var(--accent);
+  color: var(--white);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  padding: 4px 10px;
+  margin-bottom: 8px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.broadcast-context {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  padding-bottom: 8px;
+}
+.broadcast-context .overlay-badge {
+  margin: 0;
+  flex-shrink: 0;
+}
+.event-name {
+  background: var(--navy);
+  color: var(--white);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  padding: 8px 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 1500px;
 }
 .clock-block {
   background: var(--white);
   color: var(--navy);
   padding: 28px 32px;
-  min-width: 370px;
+  min-width: 440px;
+  flex-shrink: 0;
   display: flex;
   align-items: flex-end;
   flex-direction: column;
@@ -558,6 +693,7 @@ body.overlay {
 }
 .clock-label {
   font-size: 12px;
+  line-height: 16px;
   font-weight: 800;
   letter-spacing: 1.5px;
   margin-bottom: 8px;
@@ -565,6 +701,44 @@ body.overlay {
 .clock-time {
   font: 700 56px/1.1 var(--number-font);
   font-variant-numeric: tabular-nums;
+}
+.clock-time-row {
+  display: flex;
+  min-height: 62px;
+  align-items: center;
+  gap: 24px;
+}
+.finish-rank {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-right: 24px;
+  border-right: 1px solid var(--line);
+}
+.rank-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+.finish-rank strong {
+  font: 700 38px/1.1 var(--number-font);
+}
+.finish-gap {
+  font: 700 18px var(--number-font);
+  line-height: 22px;
+}
+.clock-gap-slot {
+  height: 30px;
+  min-height: 30px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+}
+.finish-gap.ahead {
+  color: var(--ahead);
+}
+.finish-gap.behind {
+  color: var(--accent-dark);
 }
 .stale {
   opacity: 0.8;
@@ -595,6 +769,15 @@ body.overlay {
   padding: 24px 28px;
   border-top: 6px solid var(--accent);
 }
+.board-event-name {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ice);
+  margin-top: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .leaderboard-heading .overlay-badge {
   margin-right: 20px;
 }
@@ -607,10 +790,14 @@ body.overlay {
   margin: 6px 0 0;
   font-size: 38px;
   line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .leaderboard-row {
   display: grid;
-  grid-template-columns: 64px 70px 1fr 150px;
+  grid-template-columns: 64px 70px minmax(0, 1fr) 150px;
   align-items: center;
   gap: 12px;
   min-height: 58px;
@@ -629,6 +816,11 @@ body.overlay {
 .row-bib {
   font: 16px var(--number-font);
   color: var(--muted);
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .row-name {
   font-size: 23px;
@@ -636,10 +828,21 @@ body.overlay {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 .row-time {
   font: 700 25px var(--number-font);
   text-align: right;
+}
+.row-timing {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.row-gap {
+  font: 500 15px var(--number-font);
+  color: var(--muted);
 }
 .board-footer {
   font-size: 12px;

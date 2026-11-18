@@ -102,7 +102,7 @@ void update(void *data, obs_data_t *settings)
 	auto *overlay = static_cast<Overlay *>(data);
 	std::lock_guard<std::mutex> lock(overlay->settingsMutex);
 	std::string view = obs_data_get_string(settings, "view");
-	if (view != "top10") view = "current";
+	if (view != "top10" && view != "auto") view = "current";
 	overlay->url = std::string(serviceUrl) + "/overlay/" + view + "?category=" +
 		urlEncode(obs_data_get_string(settings, "category"));
 	overlay->dirty = true;
@@ -188,10 +188,11 @@ obs_properties_t *properties(void *)
 {
 	obs_properties_t *props = obs_properties_create();
 	obs_property_t *view = obs_properties_add_list(props, "view", "Display", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
-	obs_property_list_add_string(view, "Racer on course", "current");
+	obs_property_list_add_string(view, "Automatic race coverage", "auto");
+	obs_property_list_add_string(view, "Racers on course", "current");
 	obs_property_list_add_string(view, "Category top 10", "top10");
 	obs_property_t *category = obs_properties_add_text(props, "category", "Category (exact CSV value)", OBS_TEXT_DEFAULT);
-	obs_property_set_long_description(category, "Used by top 10. Leave blank to show the first available category. Each source can show a different category.");
+	obs_property_set_long_description(category, "Used by manual top 10 only. Leave blank for the first category, or enter auto to follow the current racer. Automatic race coverage selects categories itself.");
 	obs_properties_add_button2(props, "control", "Open race control — connection, CSV and demo", openControl, nullptr);
 	return props;
 }
@@ -209,7 +210,7 @@ bool obs_module_load(void)
 	info.update = update;
 	info.get_width = [](void *) -> uint32_t { return 1920; };
 	info.get_height = [](void *) -> uint32_t { return 1080; };
-	info.get_defaults = [](obs_data_t *settings) { obs_data_set_default_string(settings, "view", "current"); };
+	info.get_defaults = [](obs_data_t *settings) { obs_data_set_default_string(settings, "view", "auto"); };
 	info.get_properties = properties;
 	info.video_tick = tick;
 	info.video_render = render;

@@ -105,6 +105,12 @@ int main()
 	runUiTask();
 	assert(created == 1 && updated == 1 && parentRefs == 0);
 	assert(lastUrl.find("category=U12%20tyt%C3%B6t") != std::string::npos);
+	obs_data_set_string(settings, "view", "auto");
+	update(overlay, settings);
+	tick(overlay, 0);
+	runUiTask();
+	assert(lastUrl.find("/overlay/auto?") != std::string::npos);
+	assert(created == 1 && updated == 2 && parentRefs == 0);
 	render(overlay, nullptr);
 	assert(rendered == 1);
 	destroy(overlay);

@@ -34,26 +34,50 @@ The installer copies the package into `~/Library/Application Support/obs-studio/
 
 The demo uses synthetic racers in the `Demo` category. The first racer is always fastest. Demo results and the demo roster are separate from live race data. **Pysäytä** (Stop) pauses the demo; **Nollaa demo** (Reset demo) clears its results.
 
-The canvas is 1920 × 1080. The racer graphic appears along the bottom. Each top 10 source can display a different category; an empty category field selects the first available category.
+The canvas is 1920 × 1080. The racer graphic appears along the bottom, with a category badge beside the racer details and the club below the name. Competition naming and the **DEMO**/**TESTI** markers are separate from the category. Each top 10 source can display a different category; an empty category field selects the first available category. To follow the current racer or latest finisher automatically, enter `auto` as the category or use `http://127.0.0.1:8787/overlay/top10?category=auto`. Automatic mode shows no category standings when that racer has no category.
+
+## Automatic race coverage
+
+Select **Display → Automatic race coverage** in the OBS source properties, or use `http://127.0.0.1:8787/overlay/auto`. This view switches between racers and results without reloading the page. Manual racer and category top 10 views remain available.
+
+Each active bib has its own running clock. The oldest active racer occupies the main lower-third; additional racers appear in compact rows showing only bib, optional name and estimated time. A finish, DNF or DSQ takes the main position for the configured display time, then leaves the stack. Closely spaced terminal events are shown in order. DNF and DSQ are statuses, not ranked finish times.
+
+When no racers remain on course and all terminal displays have completed, the overlay shows the most recent terminal racer's category standings. Once the configured time since the last start has elapsed, it cycles through categories with ranked results. Racers still waiting to start do not prevent cycling. Any new start immediately restores the racer view; cycling never covers racers still on course.
+
+Race control provides three saved timing settings beside the roster controls:
+
+| Setting                                               | Default     |
+| ----------------------------------------------------- | ----------- |
+| Finish / DNF / DSQ display duration                   | 2 seconds   |
+| Time since the last start before idle results cycling | 180 seconds |
+| Display duration for each category in the cycle       | 10 seconds  |
+
+A missing finish is not automatically classified as DNF. Terminal statuses must arrive from the feed. Verify the VOLA status-code mapping with the timing operator before the race; Kiril's public parser does not document DNF or DSQ codes. JSON feeds can send explicit `dnf` and `dsq` event types.
 
 ## Competitor roster
+
+Set **Kilpailun nimi** (Competition name) above the CSV import controls and click **Tallenna kilpailun nimi** (Save competition name). The optional name appears on both overlays, independently of the category and DEMO/TESTI markers. It defaults to blank; saving an empty value hides it. Use up to 120 characters without control characters. Saving the competition name keeps the timing connection running.
+
+Select the competition discipline beside the competition name and CSV controls: **GS**, **SL**, **TAITO**, **SG**, **SUP**, **DH** or **Other**. The saved discipline appears as a red badge separate from the racer's category and DEMO/TESTI marker. **Other** is the default and hides only the discipline badge. Saving the discipline keeps active clocks and the timing connection running.
 
 Import a roster in **Kilpailijat** (Competitors) by uploading a file, pasting CSV text or entering an HTTP(S) CSV URL. The URL must return CSV directly, such as a spreadsheet's CSV export. **Hae lista** (Fetch roster) saves a local copy; the service does not keep polling that URL.
 
 ```csv
-bib,name,category
-001,Racer 001,U12 Girls
-002,Racer 002,U12 Boys
+bib,name,category,club
+001,Racer 001,U12 Girls,Example Ski Club
+002,Racer 002,U12 Boys,
 ```
 
-- All three columns are required: `bib`, `name` and `category`.
+- Only the `bib` column and each row's bib value are required. The optional columns are `name`, `category` and `club`.
+- Existing three-column `bib,name,category` files still work. CSV downloads always include all four columns.
+- Missing optional columns or empty values remain blank in the overlay; no placeholder name, category or club is invented.
 - Commas and semicolons are accepted as separators. Quote names containing commas.
 - Bibs must be unique across the roster. `001` and `1` are different bibs: the CSV value must match the timing feed exactly.
 - Enter the category in the OBS source settings exactly as it appears in the CSV.
-- An unknown bib has no invented name and uses the category `Unknown`.
+- An unknown bib shows its bib and time with blank name, category and club. Racers without a category do not appear in category standings or receive a rank.
 - An invalid import is rejected in full, keeping the previous roster.
 
-Reimporting updates names and categories for results already received. **Lataa nykyinen CSV** (Download current CSV) downloads the active roster. With **Testisyöte** (Test feed) enabled, imports and results use a separate test race and the overlay displays **TESTI** (TEST).
+Reimporting updates names, categories and clubs for results already received. **Lataa nykyinen CSV** (Download current CSV) downloads the active roster. With **Testisyöte** (Test feed) enabled, imports and results use a separate test race and the overlay displays **TESTI** (TEST).
 
 ## Connect to VOLA timing
 
@@ -70,13 +94,15 @@ This plugin consumes the TCP events directly and gets names and categories from 
 
 Enter only the address or hostname, such as `timing-pc.local`, in the host field. The port has its own field. Both computers must be able to communicate; sharing a Wi-Fi network name alone does not guarantee connectivity.
 
-**The VOLA adapter is experimental.** Message interpretation is inferred from Kiril's public code, not a confirmed protocol for the current VOLA version. Verify start, finish, bib formatting and any intermediate timing messages before race use. Kiril reported that the free VOLA version allows a limited test with up to 20 finish records; that product limit has not been independently verified here.
+**The VOLA adapter is experimental.** Message interpretation is inferred from Kiril's public code, not a confirmed protocol for the current VOLA version. The default mapping recognizes status `0` as start and `1` as finish; other numeric codes are ignored unless configured in the advanced VOLA status mapping in race control. This replaces the earlier assumption that every nonzero code was a finish. Confirm any additional finish, DNF and DSQ codes before using them. Verify start, finish, bib formatting and any intermediate timing messages before race use. Kiril reported that the free VOLA version allows a limited test with up to 20 finish records; that product limit has not been independently verified here.
 
 ## Timing and standings
 
 During a run, the clock is marked **ARVIOITU AIKA** (ESTIMATED TIME): it advances locally after a start event. At a VOLA finish, the result is calculated from the feed's finish and start timestamps.
 
-The top 10 sorts times from fastest to slowest within each category. It uses the **last finish received for each bib**, so a correction replaces an earlier time. This version does not calculate a two-run total or choose a racer's best attempt. Clear live results through the control panel's confirmation prompt before starting another race or separate run.
+The top 10 sorts times from fastest to slowest within each category. Each row shows the racer's time and gap behind that category's current leader. It uses the **last finish received for each bib**, so a correction replaces an earlier time. This version does not calculate a two-run total or choose a racer's best attempt. Clear live results through the control panel's confirmation prompt before starting another race or separate run.
+
+After a finish, the racer graphic shows the rank within that racer's own category. Ties share a rank and leave a gap before the next rank, for example **1, 1, 3**. A slower result shows a positive gap in red; a new leader shows a negative gap in green compared with the previous leader. A tie shows zero. The first finisher has no comparison time and displays **JOHDOSSA** (IN THE LEAD). During a run, no finish rank or leader comparison is shown. Without a category, the racer's time remains visible but no rank or gap is calculated.
 
 When a disconnect is detected, the running clock freezes and the overlay reports the interruption. Silence between start and finish events is allowed; detecting a broken TCP connection may take time. Restarting restores saved results, roster and settings, but not a run in progress. Connecting to VOLA during a run waits for the next start because the missing start time is unknown. `S` on-course lists are not yet used.
 

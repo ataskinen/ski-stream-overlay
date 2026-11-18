@@ -5,11 +5,31 @@ import {
   formatTime,
   request,
   resetContext,
+  saveEventName,
+  saveConnectionConfig,
+  savePresentationSettings,
+  saveDiscipline,
 } from "./shared.js";
 
 const $ = (id) => document.getElementById(id);
 let toastTimeout;
 let activeState;
+let eventNameDirty = false;
+let eventNameReceived = false;
+let disciplineDirty = false;
+let disciplineReceived = false;
+let presentationDirty = false;
+let presentationReceived = false;
+const presentationInputs = {
+  finishHoldMs: "finish-hold",
+  idleRotationMs: "idle-rotation",
+  categoryRotationMs: "category-rotation",
+};
+function populatePresentation(settings) {
+  if (presentationDirty || !settings) return;
+  for (const [key, id] of Object.entries(presentationInputs))
+    if (Number.isFinite(settings[key])) $(id).value = settings[key] / 1000;
+}
 function toast(message, error = false) {
   const node = $("toast");
   node.textContent = message;
@@ -40,12 +60,25 @@ function updateLinks() {
   const category = $("category").value;
   const path = `/overlay/top10${category ? `?category=${encodeURIComponent(category)}` : ""}`;
   $("current-url").value = `${location.origin}/overlay/current`;
+  $("auto-url").value = `${location.origin}/overlay/auto`;
   $("top-url").value = `${location.origin}${path}`;
   if ($("top-preview").getAttribute("src") !== path)
     $("top-preview").src = path;
 }
 function render(state) {
   activeState = state;
+  if (typeof state.discipline === "string") {
+    disciplineReceived = true;
+    if (!disciplineDirty) $("discipline").value = state.discipline;
+  }
+  if (state.presentationSettings) {
+    presentationReceived = true;
+    populatePresentation(state.presentationSettings);
+  }
+  if (typeof state.eventName === "string") {
+    eventNameReceived = true;
+    if (!eventNameDirty) $("event-name").value = state.eventName;
+  }
   const reset = resetContext(state);
   $("reset-live").textContent = reset.label;
   $("reset-live").disabled = reset.disabled;
@@ -93,7 +126,9 @@ function render(state) {
   $("connection-message").textContent =
     messages[state.connection?.message] || state.connection?.message || "";
   const previous = $("category").value;
-  const categories = state.categories || [];
+  const categories = (state.categories || []).filter((category) =>
+    category.trim(),
+  );
   const existing = Array.from($("category").options)
     .slice(1)
     .map((option) => option.value);
@@ -126,17 +161,20 @@ function render(state) {
     `${rosterKind}: ${roster.length} kilpailijaa${state.mode === "demo" ? " · näytöissä erillinen demolista" : ""}`;
   const results = [...(state.results || [])].sort(
     (a, b) =>
-      (a.category || "").localeCompare(b.category || "") || a.timeMs - b.timeMs,
+      (a.category || "").localeCompare(b.category || "") ||
+      (a.timeMs ?? Infinity) - (b.timeMs ?? Infinity),
   );
   $("results-body").replaceChildren(
     ...results.map((row) => {
       const tr = element("tr");
       for (const value of [
-        row.rank || "—",
+        row.rank || "",
         row.bib,
-        row.name || "Nimi puuttuu",
-        row.category || "Sarja puuttuu",
-        formatTime(row.timeMs),
+        row.name || "",
+        row.category || "",
+        ["dnf", "dsq"].includes(row.status)
+          ? row.status.toUpperCase()
+          : formatTime(row.timeMs),
       ])
         tr.append(element("td", "", String(value)));
       return tr;
@@ -169,12 +207,65 @@ $("config-form").addEventListener("submit", (event) => {
     testFeed: $("test-feed").checked,
   };
   action(async () => {
-    await request("/api/config", {
-      method: "PUT",
-      body: JSON.stringify(config),
-    });
+    try {
+      config.volaStatusMap = JSON.parse($("vola-status-map").value);
+    } catch {
+      throw new Error(
+        "VOLA-tapahtumakoodien pitää olla kelvollinen JSON-objekti.",
+      );
+    }
+    await saveConnectionConfig(config);
     toast("Ajanoton asetukset tallennettu.");
   }, "config-feedback");
+});
+$("presentation-form").addEventListener("input", () => {
+  presentationDirty = true;
+});
+$("presentation-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const settings = Object.fromEntries(
+    Object.entries(presentationInputs).map(([key, id]) => [
+      key,
+      Number($(id).value) * 1000,
+    ]),
+  );
+  action(async () => {
+    await savePresentationSettings(settings);
+    if (
+      Object.entries(presentationInputs).every(
+        ([key, id]) => Number($(id).value) * 1000 === settings[key],
+      )
+    )
+      presentationDirty = false;
+    toast("Automaattisen kisaseurannan näyttöajat tallennettu.");
+  }, "presentation-feedback");
+});
+$("event-name").addEventListener("input", () => {
+  eventNameDirty = true;
+});
+$("discipline").addEventListener("change", () => {
+  disciplineDirty = true;
+});
+$("discipline-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const submitted = $("discipline").value;
+  action(async () => {
+    await saveDiscipline(submitted);
+    if ($("discipline").value === submitted) disciplineDirty = false;
+    toast("Laji tallennettu.");
+  }, "discipline-feedback");
+});
+$("event-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const submitted = $("event-name").value.trim();
+  action(async () => {
+    await saveEventName(submitted);
+    if ($("event-name").value.trim() === submitted) {
+      eventNameDirty = false;
+      $("event-name").value = submitted;
+    }
+    toast("Kilpailun nimi tallennettu.");
+  }, "event-feedback");
 });
 $("simulator-preset").addEventListener("click", () => {
   $("mode").value = "tcp";
@@ -261,6 +352,16 @@ document
   .forEach((stage) => previews.observe(stage));
 request("/api/config")
   .then((config) => {
+    if (!disciplineDirty && !disciplineReceived)
+      $("discipline").value = config.discipline || "Other";
+    if (!presentationReceived) populatePresentation(config);
+    $("vola-status-map").value = JSON.stringify(
+      config.volaStatusMap || { 0: "start", 1: "finish" },
+      null,
+      2,
+    );
+    if (!eventNameDirty && !eventNameReceived)
+      $("event-name").value = config.eventName || "";
     for (const id of [
       "mode",
       "protocol",

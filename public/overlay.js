@@ -1,28 +1,41 @@
-import { connectState, element, feedLabel, formatTime } from "./shared.js";
+import {
+  categoryResults,
+  connectState,
+  element,
+  feedLabel,
+  finishSummary,
+  formatGap,
+  formatTime,
+  estimatedTime,
+  overlaySelection,
+  disciplineLabel,
+} from "./shared.js";
 
 const root = document.getElementById("overlay-root");
 const isTop = location.pathname.endsWith("/top10");
+const isAutomatic = location.pathname.endsWith("/auto");
 const requestedCategory = new URLSearchParams(location.search).get("category");
 let state;
 let receivedAt = 0;
 let serviceConnected = false;
-let frozenTime = null;
-let timeNode;
+let clocks = [];
 
-function currentTime() {
-  const current = state?.current;
-  if (!current) return 0;
-  if (!serviceConnected || current.stale || !current.running)
-    return frozenTime ?? current.timeMs;
-  // The interpolation is a visual estimate, never a finish result.
-  const serverAge = Math.max(
-    0,
-    (state.serverNow || Date.now()) -
-      (current.updatedAt || state.serverNow || Date.now()),
+function raceClock(racer, className = "clock-time") {
+  const node = element(
+    "strong",
+    className,
+    formatTime(
+      estimatedTime(
+        racer,
+        state.serverNow,
+        receivedAt,
+        performance.now(),
+        serviceConnected,
+      ),
+    ),
   );
-  return (
-    current.timeMs + serverAge + Math.max(0, performance.now() - receivedAt)
-  );
+  clocks.push({ node, racer });
+  return node;
 }
 function badge() {
   const label = feedLabel(state);
@@ -32,41 +45,65 @@ function badge() {
     label,
   );
 }
+function disciplineBadge() {
+  const label = disciplineLabel(state.discipline);
+  return label ? element("span", "discipline-badge", label) : null;
+}
 function render(next) {
   state = next;
   receivedAt = performance.now();
   serviceConnected = true;
-  frozenTime = null;
   root.replaceChildren();
-  timeNode = null;
+  clocks = [];
+  const selected = overlaySelection(state, isAutomatic);
   const demo = state.mode === "demo";
-  if (isTop) {
-    const category = requestedCategory || state.categories?.[0];
-    const rows = (state.results || [])
-      .filter((row) => row.category === category)
-      .sort((a, b) => a.timeMs - b.timeMs)
-      .slice(0, 10);
+  if (isTop || selected.mode === "top10") {
+    const selectedCategory = isTop ? requestedCategory : selected.category;
+    const { category, rows } =
+      selectedCategory || isTop
+        ? categoryResults(state, selectedCategory)
+        : { category: "", rows: [] };
     const board = element("section", "leaderboard");
     const head = element("header", "leaderboard-heading");
-    head.append(
+    const metadata = element("div", "board-metadata");
+    const discipline = disciplineBadge();
+    if (discipline) metadata.append(discipline);
+    metadata.append(
       badge(),
       element("span", "leaderboard-kicker", "YHDEN LASKUN AJAT"),
-      element("h1", "", category || "Sarja puuttuu"),
     );
+    head.append(metadata);
+    if (state.eventName)
+      head.append(element("div", "board-event-name", state.eventName));
+    if (category) head.append(element("h1", "", category));
     board.append(head);
     if (!rows.length)
       board.append(
-        element("p", "leaderboard-empty", "Odotetaan sarjan tuloksia"),
+        element(
+          "p",
+          "leaderboard-empty",
+          category
+            ? "Odotetaan sarjan tuloksia"
+            : "Valitse sarja kilpailijalistasta",
+        ),
       );
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       const line = element("div", "leaderboard-row");
       line.append(
-        element("span", "position", String(row.rank || i + 1).padStart(2, "0")),
+        element(
+          "span",
+          "position",
+          Number.isFinite(row.rank) ? String(row.rank).padStart(2, "0") : "",
+        ),
         element("span", "row-bib", `#${row.bib}`),
-        element("span", "row-name", row.name || `Kilpailija ${row.bib}`),
-        element("span", "row-time", formatTime(row.timeMs)),
+        element("span", "row-name", row.name || ""),
       );
+      const times = element("span", "row-timing");
+      times.append(element("span", "row-time", formatTime(row.timeMs)));
+      if (i > 0 && Number.isFinite(row.gapToLeaderMs))
+        times.append(element("span", "row-gap", formatGap(row.gapToLeaderMs)));
+      line.append(times);
       board.append(line);
     }
     board.append(
@@ -79,7 +116,7 @@ function render(next) {
     root.append(board);
     return;
   }
-  const current = state.current;
+  const current = selected.current;
   if (!current) {
     if (demo || state.testFeed)
       root.append(
@@ -95,18 +132,54 @@ function render(next) {
     current.stale ||
     state.connection?.status === "disconnected" ||
     state.connection?.status === "error";
+  const terminalStatus = String(current.status || "").toLowerCase();
+  const isUnfinishedTerminal =
+    terminalStatus === "dnf" || terminalStatus === "dsq";
   const bar = element("section", `lower-third${stale ? " stale" : ""}`);
+  if (selected.others.length) {
+    const stack = element("div", "racer-stack");
+    for (const racer of selected.others) {
+      const line = element(
+        "div",
+        `compact-racer${racer.stale ? " stale" : ""}`,
+      );
+      line.append(
+        element("span", "compact-bib", `#${racer.bib}`),
+        element("span", "compact-name", racer.name || ""),
+        raceClock(racer, "compact-time"),
+      );
+      stack.append(line);
+    }
+    bar.append(stack);
+  }
+  if (
+    state.eventName ||
+    demo ||
+    state.testFeed ||
+    disciplineLabel(state.discipline)
+  ) {
+    const context = element("div", "broadcast-context");
+    if (state.eventName)
+      context.append(element("span", "event-name", state.eventName));
+    const markers = element("div", "context-markers");
+    const discipline = disciplineBadge();
+    if (discipline) markers.append(discipline);
+    if (demo || state.testFeed) markers.append(badge());
+    if (markers.children.length) context.append(markers);
+    bar.append(context);
+  }
   const bib = element("div", "bib-block");
   bib.append(
     element("span", "bib-label", "NUMERO"),
     element("strong", "", String(current.bib)),
   );
   const athlete = element("div", "athlete-block");
-  athlete.append(
-    badge(),
-    element("div", "athlete-name", current.name || `Kilpailija ${current.bib}`),
-    element("div", "athlete-category", current.category || "Sarja puuttuu"),
-  );
+  if (current.category)
+    athlete.append(element("span", "category-badge", current.category));
+  if (current.name)
+    athlete.append(element("div", "athlete-name", current.name));
+  if (current.club)
+    athlete.append(element("div", "athlete-club", current.club));
   const clock = element("div", "clock-block");
   clock.append(
     element(
@@ -116,16 +189,42 @@ function render(next) {
         ? "YHTEYS KATKENNUT"
         : current.running
           ? "RADALLA · ARVIOITU AIKA"
-          : "MAALIAIKA",
+          : terminalStatus === "dnf"
+            ? "KESKEYTTI"
+            : terminalStatus === "dsq"
+              ? "HYLÄTTY"
+              : "MAALIAIKA",
     ),
   );
-  timeNode = element("strong", "clock-time", formatTime(currentTime()));
-  clock.append(timeNode);
+  const timeRow = element("div", "clock-time-row");
+  const summary = finishSummary(current);
+  if (summary) {
+    const rank = element("div", "finish-rank");
+    rank.append(
+      element("span", "rank-label", "SIJA"),
+      element("strong", "", summary.rank),
+    );
+    timeRow.append(rank);
+  }
+  timeRow.append(
+    isUnfinishedTerminal
+      ? element(
+          "strong",
+          "clock-time terminal-status",
+          terminalStatus.toUpperCase(),
+        )
+      : raceClock(current),
+  );
+  clock.append(timeRow);
+  const gapSlot = element("div", "clock-gap-slot");
+  if (summary?.gap)
+    gapSlot.append(element("span", `finish-gap ${summary.tone}`, summary.gap));
+  clock.append(gapSlot);
   bar.append(bib, athlete, clock);
   root.append(bar);
 }
 connectState(render, () => {
-  if (serviceConnected) frozenTime = currentTime();
+  // Leave all displayed clocks at their last rendered value until a fresh snapshot.
   serviceConnected = false;
   const bar = root.querySelector(".lower-third");
   if (bar) {
@@ -138,13 +237,13 @@ connectState(render, () => {
       "Yhteys ohjauspalveluun katkesi · viimeksi vastaanotetut tulokset";
 });
 function frame() {
-  if (
-    timeNode &&
-    state?.current?.running &&
-    !state.current.stale &&
-    serviceConnected
-  )
-    timeNode.textContent = formatTime(currentTime());
+  if (serviceConnected)
+    for (const { node, racer } of clocks) {
+      if (racer.running && !racer.stale)
+        node.textContent = formatTime(
+          estimatedTime(racer, state.serverNow, receivedAt, performance.now()),
+        );
+    }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

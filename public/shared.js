@@ -11,6 +11,100 @@ export function feedLabel(state) {
   if (state.mode === "demo") return "DEMO";
   return state.testFeed ? "TESTI" : "SKI RACE";
 }
+export const DISCIPLINES = ["GS", "SL", "TAITO", "SG", "SUP", "DH", "Other"];
+export function disciplineLabel(discipline) {
+  return DISCIPLINES.includes(discipline) && discipline !== "Other"
+    ? discipline
+    : "";
+}
+export function formatGap(value) {
+  if (!Number.isFinite(value)) return "";
+  const sign = value < 0 ? "−" : value > 0 ? "+" : "";
+  return `${sign}${formatTime(Math.abs(value))}`;
+}
+export function finishSummary(current) {
+  if (
+    !current?.finished ||
+    ["dnf", "dsq"].includes(String(current.status || "").toLowerCase()) ||
+    current.running ||
+    !current.category ||
+    !Number.isFinite(current.rank)
+  )
+    return null;
+  const delta = current.leadDeltaMs;
+  const comparison = Number.isFinite(delta) ? delta : current.gapToLeaderMs;
+  return {
+    rank: String(current.rank),
+    gap: Number.isFinite(delta)
+      ? formatGap(delta)
+      : current.isLeader
+        ? "JOHDOSSA"
+        : formatGap(current.gapToLeaderMs),
+    tone:
+      Number.isFinite(comparison) && comparison < 0
+        ? "ahead"
+        : Number.isFinite(comparison) && comparison > 0
+          ? "behind"
+          : "level",
+  };
+}
+export function estimatedTime(
+  racer,
+  serverNow,
+  receivedAt,
+  now,
+  connected = true,
+) {
+  if (!racer || !Number.isFinite(racer.timeMs)) return null;
+  if (!connected || racer.stale || !racer.running) return racer.timeMs;
+  const age = Math.max(
+    0,
+    (serverNow || 0) - (racer.updatedAt || serverNow || 0),
+  );
+  return racer.timeMs + age + Math.max(0, now - receivedAt);
+}
+export function overlaySelection(state, automatic = false) {
+  const presentation = automatic ? state.presentation : null;
+  const current = presentation?.current ?? state.current ?? null;
+  const others = presentation?.otherRacers ?? state.activeRacers ?? [];
+  return {
+    mode: ["top10", "cycle"].includes(presentation?.mode) ? "top10" : "racer",
+    current,
+    category: presentation?.category || "",
+    others: others.filter((racer) => racer.bib !== current?.bib),
+  };
+}
+export function categoryResults(state, requestedCategory) {
+  const category =
+    requestedCategory === "auto"
+      ? state.current
+        ? typeof state.current.category === "string" &&
+          state.current.category.trim()
+          ? state.current.category
+          : ""
+        : typeof state.presentation?.category === "string" &&
+            state.presentation.category.trim()
+          ? state.presentation.category
+          : ""
+      : requestedCategory ||
+        (state.categories || []).find(
+          (value) => typeof value === "string" && value.trim(),
+        );
+  return {
+    category: category || "",
+    rows: category
+      ? (state.results || [])
+          .filter(
+            (row) =>
+              row.category === category &&
+              (!row.status || row.status === "finish") &&
+              Number.isFinite(row.timeMs),
+          )
+          .sort((a, b) => a.timeMs - b.timeMs)
+          .slice(0, 10)
+      : [],
+  };
+}
 export function resetContext(state) {
   if (!state || state.mode === "demo")
     return {
@@ -44,6 +138,63 @@ export async function request(path, options = {}) {
       data.error || data.message || `Pyyntö epäonnistui (${response.status}).`,
     );
   return data;
+}
+export function saveEventName(eventName) {
+  const value = eventName.trim();
+  if (value.length > 120)
+    throw new Error("Kilpailun nimi saa olla enintään 120 merkkiä.");
+  return request("/api/config", {
+    method: "PUT",
+    body: JSON.stringify({ eventName: value }),
+  });
+}
+export function saveDiscipline(discipline) {
+  if (!DISCIPLINES.includes(discipline))
+    throw new Error("Valitse laji luettelosta.");
+  return request("/api/config", {
+    method: "PUT",
+    body: JSON.stringify({ discipline }),
+  });
+}
+export function savePresentationSettings(settings) {
+  const fields = {
+    finishHoldMs: [500, 30000],
+    idleRotationMs: [10000, 3600000],
+    categoryRotationMs: [1000, 60000],
+  };
+  const values = {};
+  for (const [key, [minimum, maximum]] of Object.entries(fields)) {
+    const value = settings[key];
+    if (!Number.isFinite(value) || value < minimum || value > maximum)
+      throw new Error("Tarkista näytön vaihtumisen ajat ja sallitut rajat.");
+    values[key] = Math.round(value);
+  }
+  return request("/api/config", {
+    method: "PUT",
+    body: JSON.stringify(values),
+  });
+}
+export function saveConnectionConfig(config) {
+  const fields = [
+    "mode",
+    "protocol",
+    "host",
+    "port",
+    "url",
+    "pollIntervalMs",
+    "rosterUrl",
+    "testFeed",
+    "volaStatusMap",
+  ];
+  const connection = Object.fromEntries(
+    fields
+      .filter((key) => config[key] !== undefined)
+      .map((key) => [key, config[key]]),
+  );
+  return request("/api/config", {
+    method: "PUT",
+    body: JSON.stringify(connection),
+  });
 }
 export function connectState(onState, onDisconnect) {
   let closed = false;

@@ -2,7 +2,8 @@ import http from "node:http";
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { Race } from "./lib/race.mjs";
+import { Race, presentationDefaults } from "./lib/race.mjs";
+import { defaultVolaStatusMap } from "./lib/protocol.mjs";
 import { parseRoster, rosterCsv } from "./lib/roster.mjs";
 import { connectFeed, readUrl } from "./lib/feed.mjs";
 import { attachParentControl } from "./lib/parent-control.mjs";
@@ -17,9 +18,54 @@ export const defaultConfig = {
   pollIntervalMs: 500,
   rosterUrl: "",
   testFeed: false,
+  eventName: "",
+  discipline: "Other",
+  ...presentationDefaults,
+  volaStatusMap: defaultVolaStatusMap,
 };
 function configFor(input) {
   const c = { ...defaultConfig, ...input };
+  if (!["GS", "SL", "TAITO", "SG", "SUP", "DH", "Other"].includes(c.discipline))
+    throw new Error("Discipline must be GS, SL, TAITO, SG, SUP, DH or Other.");
+  for (const [key, min, max] of [
+    ["finishHoldMs", 500, 30000],
+    ["idleRotationMs", 10000, 3600000],
+    ["categoryRotationMs", 1000, 60000],
+  ]) {
+    if (!Number.isInteger(c[key]) || c[key] < min || c[key] > max)
+      throw new Error(`${key} must be an integer between ${min} and ${max}.`);
+  }
+  if (
+    !c.volaStatusMap ||
+    typeof c.volaStatusMap !== "object" ||
+    Array.isArray(c.volaStatusMap)
+  )
+    throw new Error("VOLA status mapping must be a JSON object.");
+  const mappings = Object.entries(c.volaStatusMap);
+  if (
+    !mappings.length ||
+    mappings.length > 32 ||
+    mappings.some(
+      ([key, value]) =>
+        !/^(0|[1-9]\d{0,2})$/.test(key) ||
+        !["start", "finish", "dnf", "dsq"].includes(value),
+    ) ||
+    !mappings.some(([, value]) => value === "start") ||
+    !mappings.some(([, value]) => value === "finish")
+  )
+    throw new Error(
+      "VOLA mapping needs start and finish entries; use up to 32 numeric codes (0–999) mapped to start, finish, dnf or dsq.",
+    );
+  c.volaStatusMap = Object.fromEntries(mappings);
+  if (typeof c.eventName !== "string" || /[\x00-\x1f\x7f]/.test(c.eventName))
+    throw new Error(
+      "Event name must be text up to 120 characters without control characters.",
+    );
+  c.eventName = c.eventName.trim();
+  if (c.eventName.length > 120)
+    throw new Error(
+      "Event name must be text up to 120 characters without control characters.",
+    );
   if (typeof c.testFeed !== "boolean")
     throw new Error("Test feed must be true or false.");
   if (
@@ -127,6 +173,11 @@ export async function createApp({
           : roster;
     return {
       mode: config.mode,
+      eventName: config.eventName,
+      discipline: config.discipline,
+      presentationSettings: Object.fromEntries(
+        Object.keys(presentationDefaults).map((key) => [key, config[key]]),
+      ),
       testFeed: config.mode === "demo" || config.testFeed,
       rosterTarget: config.testFeed ? "test" : "live",
       connection,
@@ -137,7 +188,7 @@ export async function createApp({
         : config.testFeed
           ? testRace
           : live
-      ).view(activeRoster),
+      ).view(activeRoster, Date.now(), config),
       serverNow: Date.now(),
     };
   }
@@ -172,7 +223,7 @@ export async function createApp({
         config,
         (event) => {
           if (generation !== feedGeneration) return;
-          destination.apply(event);
+          destination.apply(event, Date.now(), config);
           connection.lastReceivedAt = Date.now();
           persist().catch(() => {
             if (generation !== feedGeneration) return;
@@ -194,11 +245,15 @@ export async function createApp({
   }
   function nextDemo() {
     const bib = demoRoster[demoStep++ % demoRoster.length].bib;
-    demo.apply({
-      type: "finish",
-      bib,
-      timeMs: bib === "001" ? 30000 : 31000 + Number(bib) * 1300,
-    });
+    demo.apply(
+      {
+        type: "finish",
+        bib,
+        timeMs: bib === "001" ? 30000 : 31000 + Number(bib) * 1300,
+      },
+      Date.now(),
+      config,
+    );
     connection = {
       status: "demo",
       message: "Simulated data — not live race results",
@@ -213,15 +268,23 @@ export async function createApp({
     demoTimer = setInterval(() => {
       if (tick === 0) {
         bib = demoRoster[demoStep++ % demoRoster.length].bib;
-        demo.apply({ type: "start", bib });
+        demo.apply({ type: "start", bib }, Date.now(), config);
       } else if (tick < 10)
-        demo.apply({ type: "time", bib, timeMs: tick * 1000 });
+        demo.apply(
+          { type: "time", bib, timeMs: tick * 1000 },
+          Date.now(),
+          config,
+        );
       else
-        demo.apply({
-          type: "finish",
-          bib,
-          timeMs: bib === "001" ? 30000 : 31000 + Number(bib) * 1300,
-        });
+        demo.apply(
+          {
+            type: "finish",
+            bib,
+            timeMs: bib === "001" ? 30000 : 31000 + Number(bib) * 1300,
+          },
+          Date.now(),
+          config,
+        );
       tick = (tick + 1) % 13;
       connection = {
         status: "demo",
@@ -291,8 +354,30 @@ export async function createApp({
         return;
       }
       if (request.method === "PUT" && route === "/api/config") {
-        const next = configFor(await body(request));
-        setupFeed(next);
+        const input = await body(request);
+        const next = configFor({ ...config, ...input });
+        const feedSettings = [
+          "mode",
+          "protocol",
+          "host",
+          "port",
+          "url",
+          "pollIntervalMs",
+          "testFeed",
+          "volaStatusMap",
+        ];
+        if (
+          feedSettings.some((key) =>
+            key === "volaStatusMap"
+              ? JSON.stringify(next[key]) !== JSON.stringify(config[key])
+              : next[key] !== config[key],
+          )
+        )
+          setupFeed(next);
+        else {
+          config = next;
+          broadcast();
+        }
         await persist();
         return json(response, 200, next);
       }
@@ -371,7 +456,11 @@ export async function createApp({
         return json(response, 404, { error: "API route not found." });
       if (request.method !== "GET")
         return json(response, 405, { error: "Method not allowed." });
-      const mappedRoute = ["/overlay/current", "/overlay/top10"].includes(route)
+      const mappedRoute = [
+        "/overlay/current",
+        "/overlay/top10",
+        "/overlay/auto",
+      ].includes(route)
         ? "/overlay.html"
         : route;
       const file = path.resolve(
@@ -408,6 +497,34 @@ export async function createApp({
     for (const client of clients) client.write(": heartbeat\n\n");
   }, 15000);
   heartbeat.unref();
+  let presentationKey = "";
+  const presentationTimer = setInterval(() => {
+    const race =
+      config.mode === "demo" ? demo : config.testFeed ? testRace : live;
+    const now = Date.now();
+    race.advance(now, config);
+    const idleStep =
+      !race.active.size &&
+      !race.terminalQueue.length &&
+      now - race.lastStartAt >= config.idleRotationMs
+        ? Math.floor(
+            (now - race.lastStartAt - config.idleRotationMs) /
+              config.categoryRotationMs,
+          )
+        : -1;
+    const key = JSON.stringify([
+      config.mode,
+      config.testFeed,
+      [...race.active.keys()],
+      race.terminalQueue.map((entry) => [entry.racer.bib, entry.racer.status]),
+      idleStep,
+    ]);
+    if (key !== presentationKey) {
+      presentationKey = key;
+      broadcast();
+    }
+  }, 100);
+  presentationTimer.unref();
   setupFeed();
   return {
     server,
@@ -416,6 +533,7 @@ export async function createApp({
       stopActiveFeed();
       clearInterval(demoTimer);
       clearInterval(heartbeat);
+      clearInterval(presentationTimer);
       for (const client of clients) client.end();
       await writeQueue;
       await new Promise((resolve) => server.close(resolve));

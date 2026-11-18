@@ -30,21 +30,22 @@
           </div>
           <p>
             Lisää OBS:n lähteistä <strong>Ski Race Overlay</strong>. Valitse
-            lähteen asetuksista laskija tai top 10.
+            lähteen asetuksista <strong>Automatic race coverage</strong>, niin
+            laskijat ja sarjojen tulokset vaihtuvat automaattisesti.
           </p>
         </div>
         <div class="preview-grid">
           <article class="preview-card">
             <div class="preview-stage">
               <iframe
-                title="Radalla olevan laskijan esikatselu"
-                src="/overlay/current"
+                title="Automaattisen kisaseurannan esikatselu"
+                src="/overlay/auto"
               ></iframe
               ><span class="stage-label">ESIKATSELU · 1920 × 1080</span>
             </div>
             <div class="preview-caption">
-              <h3>Radalla oleva laskija</h3>
-              <a href="/overlay/current" target="_blank" rel="noopener"
+              <h3>Automaattinen kisaseuranta</h3>
+              <a href="/overlay/auto" target="_blank" rel="noopener"
                 >Avaa näyttö ↗</a
               >
             </div>
@@ -73,7 +74,16 @@
             Voit käyttää samoja näyttöjä myös OBS:n Browser Source -lähteinä.
             Koko: 1920 × 1080.
           </p>
-          <label for="current-url">Laskijan näyttö</label>
+          <label for="auto-url">Automaattinen kisaseuranta</label>
+          <div class="copy-row">
+            <input id="auto-url" readonly /><button
+              type="button"
+              data-copy="auto-url"
+            >
+              Kopioi
+            </button>
+          </div>
+          <label for="current-url">Vain radalla olevat laskijat</label>
           <div class="copy-row">
             <input id="current-url" readonly /><button
               type="button"
@@ -152,6 +162,25 @@
                   />
                 </div>
               </div>
+              <details class="source-links">
+                <summary>VOLA-tapahtumakoodit (lisäasetukset)</summary>
+                <label for="vola-status-map"
+                  >Koodien merkitykset JSON-muodossa</label
+                >
+                <textarea
+                  id="vola-status-map"
+                  rows="4"
+                  spellcheck="false"
+                  aria-describedby="vola-status-map-hint"
+                >
+{"0":"start","1":"finish"}</textarea>
+                <p class="hint" id="vola-status-map-hint">
+                  Oletus vastaa Kirilin lähtö- ja maalitapahtumia. DNF- ja
+                  DSQ-koodeja ei ole vahvistettu: lisää vain ajanotosta
+                  varmistetut numerokoodit. Sallitut arvot: start, finish, dnf
+                  ja dsq. Tuntemattomat koodit ohitetaan.
+                </p>
+              </details>
             </div>
             <div data-modes="http-json">
               <label for="url">Datasyötteen URL</label
@@ -205,9 +234,99 @@
         <section class="panel">
           <span class="eyebrow">03 / KILPAILIJAT</span>
           <h2>Numerosta nimeksi.</h2>
+          <form id="event-form">
+            <label for="event-name">Kilpailun nimi</label>
+            <input
+              id="event-name"
+              name="eventName"
+              maxlength="120"
+              placeholder="Joulupukkipujottelu"
+              aria-describedby="event-name-hint"
+            />
+            <p id="event-name-hint" class="hint">
+              Näkyy laskijan ja top 10:n näytöissä. Enintään 120 merkkiä.
+            </p>
+            <button type="submit">Tallenna kilpailun nimi</button>
+            <p id="event-feedback" class="feedback" role="status"></p>
+          </form>
+          <form id="discipline-form">
+            <label for="discipline">Laji</label>
+            <select
+              id="discipline"
+              name="discipline"
+              aria-describedby="discipline-hint"
+            >
+              <option value="GS">GS</option>
+              <option value="SL">SL</option>
+              <option value="TAITO">TAITO</option>
+              <option value="SG">SG</option>
+              <option value="SUP">SUP</option>
+              <option value="DH">DH</option>
+              <option value="Other" selected>Other</option>
+            </select>
+            <p id="discipline-hint" class="hint">
+              Näkyy punaisena lajimerkkinä laskijan ja top 10:n näytöissä. Other
+              piilottaa lajimerkin.
+            </p>
+            <button type="submit">Tallenna laji</button>
+            <p id="discipline-feedback" class="feedback" role="status"></p>
+          </form>
+          <form id="presentation-form" class="presentation-settings">
+            <h3>Automaattiset näytönvaihdot</h3>
+            <p class="hint">
+              Maalintulo, DNF tai DSQ nostetaan pääkorttiin. Sen jälkeen
+              näytetään vanhin radalla oleva laskija. Tyhjällä radalla näytetään
+              viimeisen laskijan sarjan top 10.
+            </p>
+            <label for="finish-hold"
+              >Maalintulon tai keskeytyksen näyttöaika (s)</label
+            >
+            <input
+              id="finish-hold"
+              type="number"
+              min="0.5"
+              max="30"
+              step="any"
+              value="2"
+              required
+            />
+            <label for="idle-rotation"
+              >Sarjojen kierron aloitus viimeisestä lähdöstä (s)</label
+            >
+            <input
+              id="idle-rotation"
+              type="number"
+              min="10"
+              max="3600"
+              step="any"
+              value="180"
+              required
+            />
+            <label for="category-rotation"
+              >Yhden sarjan näyttöaika kierrossa (s)</label
+            >
+            <input
+              id="category-rotation"
+              type="number"
+              min="1"
+              max="60"
+              step="any"
+              value="10"
+              required
+            />
+            <p class="hint">
+              Sarjat, joilla on tuloksia, kiertävät vain radan ja
+              maalintulojonon ollessa tyhjät. Uusi lähtö palauttaa
+              laskijanäkymän.
+            </p>
+            <button type="submit">Tallenna näyttöajat</button>
+            <p id="presentation-feedback" class="feedback" role="status"></p>
+          </form>
           <p>
-            CSV:n sarakkeet: <code>bib,name,category</code>. Numero yhdistää
-            ajan nimen ja sarjan kanssa. Lista säilytetään paikallisesti.
+            CSV:ssä vain <code>bib</code> eli kilpailijan numero on pakollinen.
+            Valinnaiset sarakkeet: <code>name,category,club</code> eli nimi,
+            sarja ja seura. Puuttuvia tietoja ei näytetä grafiikassa. Lista
+            säilytetään paikallisesti.
           </p>
           <form id="roster-form">
             <label for="csv-file">Tuo CSV-tiedosto</label
@@ -218,7 +337,7 @@
               id="csv-text"
               rows="5"
               spellcheck="false"
-              placeholder="bib,name,category&#10;12,Racer 12,Demo A&#10;34,Racer 34,Demo B"
+              placeholder="bib,name,category,club&#10;12,Racer 12,Demo A,Helsinki Ski Club&#10;34,Racer 34,Demo B,"
             ></textarea
             ><button type="submit">Tuo kilpailijat</button>
           </form>
