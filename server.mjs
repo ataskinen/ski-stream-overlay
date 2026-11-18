@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { Race, presentationDefaults } from "./lib/race.mjs";
 import { defaultVolaStatusMap } from "./lib/protocol.mjs";
 import { parseRoster, rosterCsv } from "./lib/roster.mjs";
-import { connectFeed, readUrl } from "./lib/feed.mjs";
+import { connectFeed, readRosterUrl } from "./lib/feed.mjs";
 import { attachParentControl } from "./lib/parent-control.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -114,7 +114,7 @@ export async function createApp({
     await writeFile(tmp, data);
     await rename(tmp, path.join(dataDir, "state.json"));
   },
-  downloadRoster = readUrl,
+  downloadRoster = readRosterUrl,
   feedConnector = connectFeed,
 } = {}) {
   await mkdir(dataDir, { recursive: true });

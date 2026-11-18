@@ -178,8 +178,10 @@ function render(next) {
     athlete.append(element("span", "category-badge", current.category));
   if (current.name)
     athlete.append(element("div", "athlete-name", current.name));
-  if (current.club)
-    athlete.append(element("div", "athlete-club", current.club));
+  const details = [current.club, current.yearOfBirth]
+    .filter(Boolean)
+    .join(" · ");
+  if (details) athlete.append(element("div", "athlete-club", details));
   const clock = element("div", "clock-block");
   clock.append(
     element(

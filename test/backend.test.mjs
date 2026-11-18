@@ -7,7 +7,7 @@ import net from "node:net";
 import { EventEmitter } from "node:events";
 import { Readable, PassThrough } from "node:stream";
 import { attachParentControl } from "../lib/parent-control.mjs";
-import { connectFeed } from "../lib/feed.mjs";
+import { connectFeed, readRosterUrl } from "../lib/feed.mjs";
 import { parseRoster, rosterCsv } from "../lib/roster.mjs";
 import { Race } from "../lib/race.mjs";
 import {
@@ -510,6 +510,87 @@ test("CSV preserves bibs and quoted Unicode names and rejects duplicates or malf
   );
   assert.throws(() => parseRoster('bib,name,category\n1,"A,U12'), /Unclosed/);
   assert.throws(() => parseRoster("name,category\nA,U12"), /header/);
+});
+
+const volaExport =
+  "Sample race\r\nSunday SL\r\nBy category\r\n\r\nBib.\tCode\tCategory\tName\tYear\tClub\r\n001\t900001\tN10\tEXAMPLE Äsa\t2016\tClub Ö\r\n2\t900002\tM12\tSAMPLE Bo\t\t\r\n\r\n 2 Competitors\r\n";
+
+test("VOLA tab-separated export skips title and summary while retaining optional birth year and Unicode", () => {
+  const roster = parseRoster(volaExport);
+  assert.deepEqual(roster, [
+    {
+      bib: "001",
+      name: "EXAMPLE Äsa",
+      category: "N10",
+      club: "Club Ö",
+      yearOfBirth: "2016",
+    },
+    { bib: "2", name: "SAMPLE Bo", category: "M12", club: "" },
+  ]);
+  assert.deepEqual(parseRoster(rosterCsv(roster)), roster);
+  assert.deepEqual(
+    parseRoster("bib,name,yearOfBirth\n003,Racer,2014")[0].yearOfBirth,
+    "2014",
+  );
+  assert.throws(
+    () => parseRoster(volaExport.replace("2 Competitors", "3 Competitors")),
+    /count/,
+  );
+  assert.throws(
+    () => parseRoster(volaExport.replace("2\t900002", "001\t900002")),
+    /Duplicate/,
+  );
+  assert.throws(
+    () => parseRoster(volaExport.replace("2016", "16")),
+    /four-digit/,
+  );
+  assert.throws(
+    () =>
+      parseRoster(volaExport.replace(" 2 Competitors", "bad competitor row")),
+    /columns/,
+  );
+  const race = new Race();
+  race.apply({ type: "start", bib: "001" });
+  assert.equal(race.view(roster).current.yearOfBirth, "2016");
+  race.apply({ type: "finish", bib: "001", timeMs: 15000 });
+  assert.equal(race.view(roster).results[0].yearOfBirth, "2016");
+});
+
+test("VOLA Windows-1252 URL imports persist and invalid imports preserve the saved roster", async (t) => {
+  const bytes = Buffer.from(volaExport, "latin1");
+  t.mock.method(globalThis, "fetch", async () => new Response(bytes));
+  assert.equal(
+    await readRosterUrl("https://example.com/competitors.txt"),
+    volaExport,
+  );
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "ski-vola-roster-"));
+  let app = await createApp({ dataDir });
+  t.after(async () => {
+    await app.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
+  assert.equal(
+    (
+      await directRequest(app, "/api/roster/fetch", "POST", {
+        url: "https://example.com/competitors.txt",
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await directRequest(app, "/api/roster", "POST", {
+        csv: volaExport.replace("2016", "invalid"),
+      })
+    ).status,
+    400,
+  );
+  await app.close();
+  app = await createApp({ dataDir });
+  const saved = (await directRequest(app, "/api/state")).body.liveRoster;
+  assert.equal(saved.length, 2);
+  assert.equal(saved[0].name, "EXAMPLE Äsa");
+  assert.equal(saved[0].yearOfBirth, "2016");
 });
 
 test("optional roster fields stay blank and club survives quoted Unicode CSV export/import", () => {

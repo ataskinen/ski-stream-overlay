@@ -1,5 +1,6 @@
 import {
   connectState,
+  decodeRosterText,
   element,
   feedLabel,
   formatTime,
@@ -283,9 +284,11 @@ $("csv-file").addEventListener("change", () =>
   action(async () => {
     const file = $("csv-file").files[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024)
-      throw new Error("CSV-tiedosto on liian suuri (enintään 2 Mt).");
-    $("csv-text").value = await file.text();
+    if (file.size > 2_000_000)
+      throw new Error(
+        "Kilpailijalistatiedosto on liian suuri (enintään 2 Mt).",
+      );
+    $("csv-text").value = decodeRosterText(await file.arrayBuffer());
     toast("Tiedosto luettu. Paina Tuo kilpailijat tallentaaksesi listan.");
   }),
 );

@@ -324,15 +324,19 @@
           </form>
           <p>
             CSV:ssä vain <code>bib</code> eli kilpailijan numero on pakollinen.
-            Valinnaiset sarakkeet: <code>name,category,club</code> eli nimi,
-            sarja ja seura. Puuttuvia tietoja ei näytetä grafiikassa. Lista
-            säilytetään paikallisesti.
+            Valinnaiset sarakkeet:
+            <code>name,category,club,yearOfBirth</code> eli nimi, sarja, seura
+            ja syntymävuosi. Myös VOLA:n sarkaineroteltu TXT-kilpailijalista
+            tuetaan. Puuttuvia tietoja ei näytetä grafiikassa. Lista säilytetään
+            paikallisesti.
           </p>
           <form id="roster-form">
-            <label for="csv-file">Tuo CSV-tiedosto</label
-            ><input id="csv-file" type="file" accept=".csv,text/csv" /><label
-              for="csv-text"
-              >Tai liitä kilpailijalista</label
+            <label for="csv-file">Tuo CSV- tai VOLA TXT -tiedosto</label
+            ><input
+              id="csv-file"
+              type="file"
+              accept=".csv,.txt,.tsv,text/csv,text/plain,text/tab-separated-values"
+            /><label for="csv-text">Tai liitä kilpailijalista</label
             ><textarea
               id="csv-text"
               rows="5"
@@ -352,8 +356,8 @@
               /><button type="submit">Hae lista</button>
             </div>
             <p class="hint">
-              Lataa CSV ja tallenna paikallinen kopio. Lista ei päivity
-              itsestään kesken kilpailun.
+              Lataa CSV tai VOLA TXT ja tallenna paikallinen kopio. Lista ei
+              päivity itsestään kesken kilpailun.
             </p>
           </form>
           <p id="roster-feedback" class="feedback" role="status"></p>

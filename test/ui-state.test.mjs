@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   categoryResults,
+  decodeRosterText,
   connectState,
   feedLabel,
   finishSummary,
@@ -774,4 +775,49 @@ test("SSE owns initial state and preserves finish ordering without a competing H
     "Queued callbacks after closing must be ignored",
   );
   assert.equal(disconnected, 0);
+});
+
+test("roster file decoding preserves UTF-8 BOM and Windows-1252 accents", () => {
+  const text = "Bib.\tName\r\n1\tÄsa Örn Åke €\r\n";
+  assert.equal(decodeRosterText(new TextEncoder().encode(text)), text);
+  assert.equal(
+    decodeRosterText(new TextEncoder().encode("\uFEFF" + text)),
+    text,
+  );
+  assert.equal(
+    decodeRosterText(Uint8Array.from([0xc4, 0xf6, 0xe5, 0x20, 0x80])),
+    "Äöå €",
+  );
+  assert.throws(() => decodeRosterText(new Uint8Array(2_000_001)), /2 MB/);
+});
+
+test("birth year joins club below the skier name without empty separators", async (t) => {
+  const { root, send } = await overlayHarness(
+    t,
+    "/overlay/current",
+    "?birth-year",
+  );
+  for (const [club, yearOfBirth, expected] of [
+    ["Example Club", "2016", "Example Club · 2016"],
+    ["", "2016", "2016"],
+    ["Example Club", undefined, "Example Club"],
+    ["", undefined, null],
+  ]) {
+    send({
+      mode: "tcp",
+      current: {
+        bib: "001",
+        name: "Racer",
+        club,
+        yearOfBirth,
+        running: true,
+        timeMs: 1000,
+      },
+    });
+    assert.equal(root.querySelector(".athlete-name").textContent, "Racer");
+    assert.equal(
+      root.querySelector(".athlete-club")?.textContent ?? null,
+      expected,
+    );
+  }
 });

@@ -36,11 +36,13 @@ The adapter subtracts the matching start timestamp from the finish timestamp and
 
 Confirm message framing, nonzero status meanings, intermediate timing messages and timestamps with the actual VOLA version before using this feed for a race. Synthetic parser tests verify this interpretation only; they are not a hardware compatibility test.
 
-## CSV roster
+## Competitor roster
 
-CSV requires a `bib` header and a nonempty, unique bib in every row. Optional headers are `name`, `category` and `club`. Omitted optional columns and empty values become empty strings; unknown bibs also have blank metadata. Bibs remain strings, so `001` and `1` are distinct. Comma and semicolon separators and quoted fields are accepted. Malformed CSV and duplicate bibs reject the whole import.
+CSV requires a `bib` header and a nonempty, unique bib in every row. Optional headers are `name`, `category`, `club` and `yearOfBirth`. The optional birth year is a four-digit string and is omitted from metadata when blank. It appears beside the club in the main lower third; compact stacks and top 10 omit it. Omitted optional columns and empty values become empty strings; unknown bibs also have blank metadata. Bibs remain strings, so `001` and `1` are distinct. Comma, semicolon and tab separators and quoted fields are accepted. Malformed CSV and duplicate bibs reject the whole import.
 
-Existing three-column `bib,name,category` files remain valid. CSV export always writes `bib,name,category,club`, including empty optional fields. Reimporting updates metadata on existing results. A racer without a category remains visible as the current racer but is excluded from category rankings.
+VOLA tab-separated TXT exports may include title lines before `Bib.\tCode\tCategory\tName\tYear\tClub` and a final `N Competitors` count. `Bib.` maps to `bib`, `Year` to `yearOfBirth`; `Code` is ignored. A supplied count must match the rows. Uploaded and downloaded roster files accept UTF-8 (optional BOM) or Windows-1252. Title lines do not change the competition name or discipline.
+
+Existing three-column `bib,name,category` files remain valid. CSV export writes `bib,name,category,club`, including empty optional fields, and appends `yearOfBirth` when any competitor has one. Reimporting updates metadata on existing results. A racer without a category remains visible as the current racer but is excluded from category rankings.
 
 ## Local API
 
@@ -55,7 +57,7 @@ All writes use `Content-Type: application/json`. The service checks localhost Ho
 | `PUT /api/config`        | Update settings; reconnect when timing settings change                 |
 | `POST /api/roster`       | Import `{ "csv": "bib,name,category,club…" }` atomically               |
 | `POST /api/roster/fetch` | Fetch and cache `{ "url": "https://example.com/roster.csv" }`          |
-| `GET /api/roster.csv`    | Download the active saved roster with all four columns                 |
+| `GET /api/roster.csv`    | Download the active saved roster and optional birth years              |
 | `POST /api/demo`         | `{ "action": "start" }`, `stop`, `next` or `reset`                     |
 | `POST /api/reset`        | Clear live results and reconnect                                       |
 

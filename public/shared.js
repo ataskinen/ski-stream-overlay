@@ -1,3 +1,20 @@
+export function decodeRosterText(bytes) {
+  if (bytes.byteLength > 2_000_000)
+    throw new Error("Competitor file must be smaller than 2 MB.");
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    // Some Node builds decode the C1 range as Latin-1; normalize it to Windows-1252.
+    const c1 = "€\u0081‚ƒ„…†‡ˆ‰Š‹Œ\u008dŽ\u008f\u0090‘’“”•–—˜™š›œ\u009džŸ";
+    return new TextDecoder("windows-1252")
+      .decode(bytes)
+      .replace(
+        /[\u0080-\u009f]/g,
+        (character) => c1[character.charCodeAt(0) - 0x80],
+      );
+  }
+}
+
 export function formatTime(value) {
   if (!Number.isFinite(value) || value < 0) return "—";
   const hundredths = Math.floor(value / 10);

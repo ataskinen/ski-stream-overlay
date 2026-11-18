@@ -60,7 +60,7 @@ Set **Kilpailun nimi** (Competition name) above the CSV import controls and clic
 
 Select the competition discipline beside the competition name and CSV controls: **GS**, **SL**, **TAITO**, **SG**, **SUP**, **DH** or **Other**. The saved discipline appears as a red badge separate from the racer's category and DEMO/TESTI marker. **Other** is the default and hides only the discipline badge. Saving the discipline keeps active clocks and the timing connection running.
 
-Import a roster in **Kilpailijat** (Competitors) by uploading a file, pasting CSV text or entering an HTTP(S) CSV URL. The URL must return CSV directly, such as a spreadsheet's CSV export. **Hae lista** (Fetch roster) saves a local copy; the service does not keep polling that URL.
+Import a roster in **Kilpailijat** (Competitors) by uploading a file, pasting roster text or entering an HTTP(S) roster URL. CSV and tab-separated VOLA TXT exports are accepted, including title lines and the final competitor count. UTF-8 (with or without BOM) and Windows-1252 files preserve accented names. The URL must return the file directly. **Hae lista** (Fetch roster) saves a local copy; the service does not keep polling that URL.
 
 ```csv
 bib,name,category,club
@@ -68,10 +68,10 @@ bib,name,category,club
 002,Racer 002,U12 Boys,
 ```
 
-- Only the `bib` column and each row's bib value are required. The optional columns are `name`, `category` and `club`.
-- Existing three-column `bib,name,category` files still work. CSV downloads always include all four columns.
+- Only the `bib` column and each row's bib value are required. The optional columns are `name`, `category`, `club` and `yearOfBirth` (a four-digit year; VOLA uses `Year`). VOLA `Code` values are ignored.
+- Existing three-column `bib,name,category` files still work. CSV downloads include all four standard columns and add `yearOfBirth` when the roster contains it. The optional birth year appears beside the club below the skier name in the main lower third; compact racer stacks and top 10 stay concise.
 - Missing optional columns or empty values remain blank in the overlay; no placeholder name, category or club is invented.
-- Commas and semicolons are accepted as separators. Quote names containing commas.
+- Commas, semicolons and tabs are accepted as separators. Quote names containing commas.
 - Bibs must be unique across the roster. `001` and `1` are different bibs: the CSV value must match the timing feed exactly.
 - Enter the category in the OBS source settings exactly as it appears in the CSV.
 - An unknown bib shows its bib and time with blank name, category and club. Racers without a category do not appear in category standings or receive a rank.
