@@ -1,0 +1,444 @@
+import http from "node:http";
+import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { Race } from "./lib/race.mjs";
+import { parseRoster, rosterCsv } from "./lib/roster.mjs";
+import { connectFeed, readUrl } from "./lib/feed.mjs";
+import { attachParentControl } from "./lib/parent-control.mjs";
+
+const root = path.dirname(fileURLToPath(import.meta.url));
+export const defaultConfig = {
+  mode: "demo",
+  protocol: "jsonl",
+  host: "127.0.0.1",
+  port: 5409,
+  url: "",
+  pollIntervalMs: 500,
+  rosterUrl: "",
+  testFeed: false,
+};
+function configFor(input) {
+  const c = { ...defaultConfig, ...input };
+  if (typeof c.testFeed !== "boolean")
+    throw new Error("Test feed must be true or false.");
+  if (
+    !["demo", "tcp", "http-json"].includes(c.mode) ||
+    !["jsonl", "vola"].includes(c.protocol)
+  )
+    throw new Error("Choose a supported mode and protocol.");
+  if (
+    typeof c.host !== "string" ||
+    !c.host.trim() ||
+    c.host.length > 253 ||
+    /[\s/:]/.test(c.host)
+  )
+    throw new Error(
+      "Enter a hostname or IPv4 address without a scheme or port.",
+    );
+  c.port = Number(c.port);
+  c.pollIntervalMs = Number(c.pollIntervalMs);
+  if (!Number.isInteger(c.port) || c.port < 1 || c.port > 65535)
+    throw new Error("Port must be between 1 and 65535.");
+  if (
+    !Number.isInteger(c.pollIntervalMs) ||
+    c.pollIntervalMs < 250 ||
+    c.pollIntervalMs > 60000
+  )
+    throw new Error("Polling interval must be 250–60000 ms.");
+  for (const key of ["url", "rosterUrl"]) {
+    if (typeof c[key] !== "string" || c[key].length > 2048)
+      throw new Error("Invalid URL.");
+    if (c[key]) {
+      const u = new URL(c[key]);
+      if (!["http:", "https:"].includes(u.protocol) || u.username || u.password)
+        throw new Error("Use HTTP(S) URLs without embedded credentials.");
+    }
+  }
+  if (c.mode === "http-json" && !c.url)
+    throw new Error("HTTP mode needs a feed URL.");
+  return Object.fromEntries(Object.keys(defaultConfig).map((k) => [k, c[k]]));
+}
+
+export async function createApp({
+  dataDir = process.env.DATA_DIR ?? path.join(root, "data"),
+  publicDir = path.join(root, "public"),
+  saveState = async (data) => {
+    const tmp = path.join(dataDir, "state.tmp");
+    await writeFile(tmp, data);
+    await rename(tmp, path.join(dataDir, "state.json"));
+  },
+  downloadRoster = readUrl,
+  feedConnector = connectFeed,
+} = {}) {
+  await mkdir(dataDir, { recursive: true });
+  let saved = {};
+  try {
+    saved = JSON.parse(
+      await readFile(path.join(dataDir, "state.json"), "utf8"),
+    );
+  } catch (error) {
+    if (error.code !== "ENOENT")
+      throw new Error(
+        "Saved state is invalid; restore or rename data/state.json.",
+      );
+  }
+  let config = configFor(saved.config ?? {}),
+    roster = saved.roster ?? [],
+    live = new Race(saved.race),
+    testRace = new Race(saved.testRace),
+    testRoster = saved.testRoster ?? [],
+    demo = new Race();
+  const demoRoster = parseRoster(
+    await readFile(path.join(root, "examples/competitors.csv"), "utf8"),
+  );
+  let connection = {
+      status: "idle",
+      message: "Demo ready",
+      lastReceivedAt: null,
+    },
+    stopFeed = () => {},
+    feedGeneration = 0,
+    demoTimer,
+    demoStep = 0;
+  const clients = new Set();
+  let writeQueue = Promise.resolve();
+  function persist() {
+    const data = JSON.stringify(
+      {
+        config,
+        roster,
+        race: live.save(),
+        testRoster,
+        testRace: testRace.save(),
+      },
+      null,
+      2,
+    );
+    writeQueue = writeQueue.catch(() => {}).then(() => saveState(data));
+    return writeQueue;
+  }
+  function state() {
+    const activeRoster =
+      config.mode === "demo"
+        ? demoRoster
+        : config.testFeed
+          ? testRoster
+          : roster;
+    return {
+      mode: config.mode,
+      testFeed: config.mode === "demo" || config.testFeed,
+      rosterTarget: config.testFeed ? "test" : "live",
+      connection,
+      roster: activeRoster,
+      liveRoster: config.testFeed ? testRoster : roster,
+      ...(config.mode === "demo"
+        ? demo
+        : config.testFeed
+          ? testRace
+          : live
+      ).view(activeRoster),
+      serverNow: Date.now(),
+    };
+  }
+  function broadcast() {
+    const payload = `data: ${JSON.stringify(state())}\n\n`;
+    for (const client of clients) client.write(payload);
+  }
+  function stopActiveFeed() {
+    feedGeneration++;
+    stopFeed();
+    stopFeed = () => {};
+    clearInterval(demoTimer);
+    demoTimer = undefined;
+  }
+  function setupFeed(nextConfig = config) {
+    stopActiveFeed();
+    config = nextConfig;
+    const generation = feedGeneration;
+    const destination = config.testFeed ? testRace : live;
+    live.stale();
+    testRace.stale();
+    connection = {
+      status: "idle",
+      message:
+        config.mode === "demo"
+          ? "Demo ready — press Next racer or Start demo"
+          : "Feed stopped",
+      lastReceivedAt: null,
+    };
+    if (config.mode !== "demo")
+      stopFeed = feedConnector(
+        config,
+        (event) => {
+          if (generation !== feedGeneration) return;
+          destination.apply(event);
+          connection.lastReceivedAt = Date.now();
+          persist().catch(() => {
+            if (generation !== feedGeneration) return;
+            connection.status = "error";
+            connection.message = "Could not save results";
+            broadcast();
+          });
+          broadcast();
+        },
+        (status, message) => {
+          if (generation !== feedGeneration) return;
+          connection = { ...connection, status, message };
+          if (["disconnected", "error", "stale"].includes(status))
+            destination.stale();
+          broadcast();
+        },
+      );
+    broadcast();
+  }
+  function nextDemo() {
+    const bib = demoRoster[demoStep++ % demoRoster.length].bib;
+    demo.apply({
+      type: "finish",
+      bib,
+      timeMs: bib === "001" ? 30000 : 31000 + Number(bib) * 1300,
+    });
+    connection = {
+      status: "demo",
+      message: "Simulated data — not live race results",
+      lastReceivedAt: Date.now(),
+    };
+    broadcast();
+  }
+  function startDemo() {
+    clearInterval(demoTimer);
+    let tick = 0,
+      bib;
+    demoTimer = setInterval(() => {
+      if (tick === 0) {
+        bib = demoRoster[demoStep++ % demoRoster.length].bib;
+        demo.apply({ type: "start", bib });
+      } else if (tick < 10)
+        demo.apply({ type: "time", bib, timeMs: tick * 1000 });
+      else
+        demo.apply({
+          type: "finish",
+          bib,
+          timeMs: bib === "001" ? 30000 : 31000 + Number(bib) * 1300,
+        });
+      tick = (tick + 1) % 13;
+      connection = {
+        status: "demo",
+        message: "Simulated data — not live race results",
+        lastReceivedAt: Date.now(),
+      };
+      broadcast();
+    }, 1000);
+  }
+  function json(response, status, body) {
+    response.writeHead(status, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    response.end(JSON.stringify(body));
+  }
+  async function body(request) {
+    if (!request.headers["content-type"]?.startsWith("application/json"))
+      throw new Error("Use Content-Type: application/json.");
+    let text = "";
+    for await (const chunk of request) {
+      text += chunk;
+      if (Buffer.byteLength(text) > 2_100_000)
+        throw new Error("Request is too large.");
+    }
+    return JSON.parse(text || "{}");
+  }
+  const server = http.createServer(async (request, response) => {
+    try {
+      const host = request.headers.host ?? "";
+      if (!/^(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/.test(host))
+        return json(response, 403, {
+          error: "Only localhost requests are allowed.",
+        });
+      if (
+        request.headers.origin &&
+        ![`http://${host}`, `https://${host}`].includes(request.headers.origin)
+      )
+        return json(response, 403, {
+          error: "Cross-origin requests are not allowed.",
+        });
+      const url = new URL(request.url, `http://${host}`),
+        route = url.pathname;
+      if (request.method === "GET" && route === "/api/health")
+        return json(response, 200, {
+          app: "ski-stream-overlay",
+          version: "0.1.0",
+        });
+      if (request.method === "GET" && route === "/api/state")
+        return json(response, 200, state());
+      if (request.method === "GET" && route === "/api/config")
+        return json(response, 200, config);
+      if (request.method === "GET" && route === "/api/events") {
+        response.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        });
+        response.write(`data: ${JSON.stringify(state())}\n\n`);
+        clients.add(response);
+        request.on("close", () => clients.delete(response));
+        return;
+      }
+      if (request.method === "GET" && route === "/api/roster.csv") {
+        response.writeHead(200, { "Content-Type": "text/csv; charset=utf-8" });
+        response.end(rosterCsv(config.testFeed ? testRoster : roster));
+        return;
+      }
+      if (request.method === "PUT" && route === "/api/config") {
+        const next = configFor(await body(request));
+        setupFeed(next);
+        await persist();
+        return json(response, 200, next);
+      }
+      if (request.method === "POST" && route === "/api/roster") {
+        const generation = feedGeneration;
+        const destinationIsTest = config.testFeed;
+        const input = await body(request);
+        const next = parseRoster(input.csv);
+        if (generation !== feedGeneration)
+          throw new Error(
+            "Feed settings changed during roster import. Please retry.",
+          );
+        if (destinationIsTest) testRoster = next;
+        else roster = next;
+        await persist();
+        broadcast();
+        return json(response, 200, { count: next.length });
+      }
+      if (request.method === "POST" && route === "/api/roster/fetch") {
+        const generation = feedGeneration;
+        const destinationIsTest = config.testFeed;
+        const configuredUrl = config.rosterUrl;
+        const input = await body(request);
+        const source = input.url || configuredUrl;
+        const next = parseRoster(await downloadRoster(source));
+        if (generation !== feedGeneration)
+          throw new Error(
+            "Feed settings changed during roster download. Please retry.",
+          );
+        if (destinationIsTest) testRoster = next;
+        else roster = next;
+        config.rosterUrl = source;
+        await persist();
+        broadcast();
+        return json(response, 200, { count: next.length });
+      }
+      if (request.method === "POST" && route === "/api/demo") {
+        const input = await body(request);
+        if (config.mode !== "demo")
+          throw new Error("Switch to Demo mode first.");
+        if (!["start", "stop", "next", "reset"].includes(input.action))
+          throw new Error("Unknown demo action.");
+        if (input.action === "start") startDemo();
+        if (input.action === "stop") {
+          clearInterval(demoTimer);
+          demo.stale();
+          connection.status = "idle";
+          connection.message = "Demo paused";
+        }
+        if (input.action === "next") {
+          clearInterval(demoTimer);
+          nextDemo();
+        }
+        if (input.action === "reset") {
+          clearInterval(demoTimer);
+          demo = new Race();
+          demoStep = 0;
+          connection.status = "idle";
+          connection.message = "Demo reset";
+        }
+        broadcast();
+        return json(response, 200, state());
+      }
+      if (request.method === "POST" && route === "/api/reset") {
+        const generation = feedGeneration;
+        await body(request);
+        if (generation !== feedGeneration)
+          throw new Error("Feed settings changed before reset. Please retry.");
+        if (config.testFeed) testRace = new Race();
+        else live = new Race();
+        setupFeed();
+        await persist();
+        return json(response, 200, state());
+      }
+      if (route.startsWith("/api/"))
+        return json(response, 404, { error: "API route not found." });
+      if (request.method !== "GET")
+        return json(response, 405, { error: "Method not allowed." });
+      const mappedRoute = ["/overlay/current", "/overlay/top10"].includes(route)
+        ? "/overlay.html"
+        : route;
+      const file = path.resolve(
+        publicDir,
+        "." +
+          (mappedRoute === "/"
+            ? "/index.html"
+            : decodeURIComponent(mappedRoute)),
+      );
+      if (!file.startsWith(path.resolve(publicDir) + path.sep))
+        return json(response, 403, { error: "Invalid path." });
+      const contents = await readFile(file);
+      const mime =
+        {
+          ".html": "text/html; charset=utf-8",
+          ".js": "text/javascript; charset=utf-8",
+          ".css": "text/css; charset=utf-8",
+          ".svg": "image/svg+xml",
+          ".png": "image/png",
+        }[path.extname(file)] ?? "application/octet-stream";
+      response.writeHead(200, {
+        "Content-Type": mime,
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+      });
+      response.end(contents);
+    } catch (error) {
+      json(response, error.code === "ENOENT" ? 404 : 400, {
+        error: error.message,
+      });
+    }
+  });
+  const heartbeat = setInterval(() => {
+    for (const client of clients) client.write(": heartbeat\n\n");
+  }, 15000);
+  heartbeat.unref();
+  setupFeed();
+  return {
+    server,
+    state,
+    close: async () => {
+      stopActiveFeed();
+      clearInterval(demoTimer);
+      clearInterval(heartbeat);
+      for (const client of clients) client.end();
+      await writeQueue;
+      await new Promise((resolve) => server.close(resolve));
+    },
+  };
+}
+
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  const app = await createApp();
+  const port = Number(process.env.PORT ?? 8787);
+  app.server.listen(port, "127.0.0.1", () =>
+    console.log(`Ski Stream Overlay: http://127.0.0.1:${port}`),
+  );
+  let shuttingDown;
+  const shutdown = () =>
+    (shuttingDown ??= (async () => {
+      await app.close();
+      process.exit(0);
+    })());
+  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, shutdown);
+  if (process.env.SKI_PARENT_CONTROL === "1")
+    attachParentControl(process.stdin, shutdown);
+}

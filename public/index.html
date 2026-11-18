@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="fi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ski Race Overlay — ohjauspaneeli</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body class="admin">
+    <header class="masthead">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">//</span>
+        <div>
+          <span class="eyebrow">SKI RACE OVERLAY</span>
+          <h1>Lähetys hallinnassa.</h1>
+        </div>
+      </div>
+      <div class="connection">
+        <span id="mode-badge" class="badge">ODOTTAA</span
+        ><strong id="connection-status">Yhdistetään…</strong
+        ><span id="connection-message">Paikallinen ohjauspaneeli</span>
+      </div>
+    </header>
+    <main>
+      <section class="broadcast">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">01 / LÄHETYSKUVA</span>
+            <h2>Näytöt OBS:ään</h2>
+          </div>
+          <p>
+            Lisää OBS:n lähteistä <strong>Ski Race Overlay</strong>. Valitse
+            lähteen asetuksista laskija tai top 10.
+          </p>
+        </div>
+        <div class="preview-grid">
+          <article class="preview-card">
+            <div class="preview-stage">
+              <iframe
+                title="Radalla olevan laskijan esikatselu"
+                src="/overlay/current"
+              ></iframe
+              ><span class="stage-label">ESIKATSELU · 1920 × 1080</span>
+            </div>
+            <div class="preview-caption">
+              <h3>Radalla oleva laskija</h3>
+              <a href="/overlay/current" target="_blank" rel="noopener"
+                >Avaa näyttö ↗</a
+              >
+            </div>
+          </article>
+          <article class="preview-card">
+            <div class="preview-stage">
+              <iframe
+                id="top-preview"
+                title="Sarjan top 10 esikatselu"
+                src="/overlay/top10"
+              ></iframe
+              ><span class="stage-label">ESIKATSELU · 1920 × 1080</span>
+            </div>
+            <div class="preview-caption">
+              <h3>Sarjan top 10</h3>
+              <label class="sr-only" for="category">Näytettävä sarja</label
+              ><select id="category">
+                <option value="">Ensimmäinen sarja</option>
+              </select>
+            </div>
+          </article>
+        </div>
+        <details class="source-links">
+          <summary>Selainlähteiden osoitteet ja testinäkymät</summary>
+          <p>
+            Voit käyttää samoja näyttöjä myös OBS:n Browser Source -lähteinä.
+            Koko: 1920 × 1080.
+          </p>
+          <label for="current-url">Laskijan näyttö</label>
+          <div class="copy-row">
+            <input id="current-url" readonly /><button
+              type="button"
+              data-copy="current-url"
+            >
+              Kopioi
+            </button>
+          </div>
+          <label for="top-url">Valitun sarjan top 10</label>
+          <div class="copy-row">
+            <input id="top-url" readonly /><button
+              type="button"
+              data-copy="top-url"
+            >
+              Kopioi
+            </button>
+          </div>
+        </details>
+        <div class="demo-bar">
+          <div>
+            <strong>Testaa ilman VOLAa</strong
+            ><span
+              >Demo käyttää omia testituloksia. Live-tulokset säilyvät
+              erillään.</span
+            >
+          </div>
+          <div class="button-group">
+            <button type="button" data-demo="start" class="primary">
+              Käynnistä demo</button
+            ><button type="button" data-demo="next">Seuraava laskija</button
+            ><button type="button" data-demo="stop">Pysäytä</button
+            ><button type="button" data-demo="reset">Nollaa demo</button>
+          </div>
+        </div>
+      </section>
+      <div class="setup-grid">
+        <section class="panel">
+          <span class="eyebrow">02 / DATAYHTEYS</span>
+          <h2>Ajanoton lähde</h2>
+          <p>
+            Suora VOLA-yhteys on kokeellinen. Varmista toiminta oikealla
+            ajanottokoneella ennen kilpailua.
+          </p>
+          <form id="config-form">
+            <label for="mode">Tietolähde</label
+            ><select id="mode" name="mode">
+              <option value="demo">Demo</option>
+              <option value="tcp">TCP-yhteys</option>
+              <option value="http-json">HTTP / JSON -syöte</option>
+            </select>
+            <div data-modes="tcp">
+              <label for="protocol">TCP-tietomuoto</label
+              ><select id="protocol" name="protocol">
+                <option value="vola">VOLA / NR-protokolla (kokeellinen)</option>
+                <option value="jsonl">JSON-viestit riveittäin</option>
+              </select>
+              <div class="field-pair">
+                <div>
+                  <label for="host">IP-osoite tai palvelimen nimi</label
+                  ><input
+                    id="host"
+                    name="host"
+                    placeholder="192.0.2.10"
+                    autocomplete="off"
+                  />
+                </div>
+                <div>
+                  <label for="port">Portti</label
+                  ><input
+                    id="port"
+                    name="port"
+                    type="number"
+                    min="1"
+                    max="65535"
+                    value="5409"
+                  />
+                </div>
+              </div>
+            </div>
+            <div data-modes="http-json">
+              <label for="url">Datasyötteen URL</label
+              ><input
+                id="url"
+                name="url"
+                type="url"
+                placeholder="http://192.0.2.10:8080/events"
+              /><label for="pollIntervalMs">Hakuväli (millisekuntia)</label
+              ><input
+                id="pollIntervalMs"
+                name="pollIntervalMs"
+                type="number"
+                min="250"
+                step="250"
+                value="1000"
+              />
+            </div>
+            <div data-modes="tcp http-json">
+              <label class="checkbox-label" for="test-feed"
+                ><input
+                  type="checkbox"
+                  id="test-feed"
+                  name="testFeed"
+                />Testisyöte — ei oikeita kilpailutuloksia</label
+              >
+              <p class="hint">
+                Testisyötteen näytöissä näkyy aina TESTI-merkintä.
+              </p>
+            </div>
+            <button class="primary" type="submit">Tallenna ja yhdistä</button>
+            <p id="config-feedback" class="feedback" role="status"></p>
+          </form>
+          <details class="source-links simulator-help">
+            <summary>Testaa Docker-kilpailusimulaattorilla</summary>
+            <p>
+              Käynnistä projektin Docker-simulaattori ensin. Tämä täyttää
+              paikallisen ajanottosyötteen ja CSV-listan osoitteet. Tallenna
+              yhteys ja hae kilpailijalista erikseen.
+            </p>
+            <button id="simulator-preset" type="button">
+              Täytä paikallisen simulaattorin asetukset
+            </button>
+            <p>
+              <a href="http://127.0.0.1:8790" target="_blank" rel="noopener"
+                >Avaa simulaattorin kilpailuohjaus ↗</a
+              >
+            </p>
+          </details>
+        </section>
+        <section class="panel">
+          <span class="eyebrow">03 / KILPAILIJAT</span>
+          <h2>Numerosta nimeksi.</h2>
+          <p>
+            CSV:n sarakkeet: <code>bib,name,category</code>. Numero yhdistää
+            ajan nimen ja sarjan kanssa. Lista säilytetään paikallisesti.
+          </p>
+          <form id="roster-form">
+            <label for="csv-file">Tuo CSV-tiedosto</label
+            ><input id="csv-file" type="file" accept=".csv,text/csv" /><label
+              for="csv-text"
+              >Tai liitä kilpailijalista</label
+            ><textarea
+              id="csv-text"
+              rows="5"
+              spellcheck="false"
+              placeholder="bib,name,category&#10;12,Racer 12,Demo A&#10;34,Racer 34,Demo B"
+            ></textarea
+            ><button type="submit">Tuo kilpailijat</button>
+          </form>
+          <form id="roster-url-form" class="separated">
+            <label for="roster-url">Kilpailijalistan URL</label>
+            <div class="copy-row">
+              <input
+                id="roster-url"
+                type="url"
+                placeholder="https://example.com/participants.csv"
+                required
+              /><button type="submit">Hae lista</button>
+            </div>
+            <p class="hint">
+              Lataa CSV ja tallenna paikallinen kopio. Lista ei päivity
+              itsestään kesken kilpailun.
+            </p>
+          </form>
+          <p id="roster-feedback" class="feedback" role="status"></p>
+          <div class="roster-summary">
+            <strong id="roster-count">0 kilpailijaa</strong
+            ><a href="/api/roster.csv" download="participants.csv"
+              >Lataa nykyinen CSV</a
+            >
+          </div>
+        </section>
+      </div>
+      <section class="panel results-panel">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">04 / VASTAANOTETUT TULOKSET</span>
+            <h2>Yhden laskun tulokset</h2>
+          </div>
+          <p>
+            Top 10 järjestetään ajan mukaan sarjoittain. Yhteisaikoja ei
+            lasketa.
+          </p>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Sija</th>
+                <th scope="col">Numero</th>
+                <th scope="col">Kilpailija</th>
+                <th scope="col">Sarja</th>
+                <th scope="col">Aika</th>
+              </tr>
+            </thead>
+            <tbody id="results-body">
+              <tr>
+                <td colspan="5">Ei vielä tuloksia.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="danger-row">
+          <p id="reset-helper">Odotetaan aktiivisen tietolähteen tietoja.</p>
+          <button id="reset-live" type="button" class="danger" disabled>
+            Odotetaan tietolähdettä…
+          </button>
+        </div>
+      </section>
+    </main>
+    <footer>
+      SKI RACE OVERLAY
+      <span>Paikallinen grafiikka · Suora ajanotto · Selkeä lähetys</span>
+    </footer>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <script type="module" src="/admin.js"></script>
+  </body>
+</html>

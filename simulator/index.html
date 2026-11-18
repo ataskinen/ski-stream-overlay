@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  /><title>Race timing simulator</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui;
+      background: #101a24;
+      color: #eef5fa;
+    }
+    body {
+      max-width: 800px;
+      margin: 48px auto;
+      padding: 0 24px;
+    }
+    h1 {
+      font-size: 36px;
+    }
+    button,
+    input {
+      font: inherit;
+      padding: 12px;
+      border: 1px solid #60778a;
+      border-radius: 6px;
+      margin: 4px;
+    }
+    button {
+      cursor: pointer;
+      background: #263c4e;
+      color: white;
+    }
+    button:focus-visible,
+    input:focus-visible {
+      outline: 3px solid #ffb248;
+    }
+    mark {
+      background: #ffb248;
+      color: #101a24;
+      padding: 6px;
+    }
+    pre {
+      white-space: pre-wrap;
+      background: #192937;
+      padding: 20px;
+    }
+    a {
+      color: #91d9ff;
+    }
+    #error {
+      color: #ffb3a8;
+    }
+  </style>
+  <body>
+    <mark>TEST DATA ONLY</mark>
+    <h1>Race timing simulator</h1>
+    <p>
+      A shared competition feed for testing the OBS overlay. Racer 01 always has
+      the fastest official test time.
+    </p>
+    <p>
+      <button data-action="start">Start / resume</button
+      ><button data-action="pause">Pause after finish</button
+      ><button data-action="next">Next event</button
+      ><button data-action="reset">Reset simulator</button>
+    </p>
+    <p>
+      <label for="speed">Simulation speed</label>
+      <input id="speed" type="number" min="1" max="100" value="1" /><button
+        data-action="speed"
+      >
+        Set speed
+      </button>
+    </p>
+    <p>
+      <a href="/competitors.csv">Download competitors CSV</a> ·
+      <a href="http://127.0.0.1:8787/">Open overlay controls</a>
+    </p>
+    <p>
+      At 1×, a run takes 30–43 seconds. Faster playback compresses the wait;
+      OBS’s estimated running clock still uses wall time. The official finish
+      time remains correct.
+    </p>
+    <p>
+      “Next event” starts a racer, or finishes the current racer immediately.
+      Pause waits for the current finish. Reset disconnects timing clients;
+      clear test results separately in the overlay controls.
+    </p>
+    <p id="error" role="alert"></p>
+    <pre id="state" aria-live="polite">Loading…</pre>
+    <script>
+      const state = document.querySelector("#state"),
+        error = document.querySelector("#error");
+      async function refresh() {
+        try {
+          const response = await fetch("/api/state");
+          const data = await response.json();
+          state.textContent = JSON.stringify(data, null, 2);
+        } catch {
+          error.textContent = "Simulator connection unavailable";
+        }
+      }
+      for (const button of document.querySelectorAll("button[data-action]"))
+        button.onclick = async () => {
+          try {
+            error.textContent = "";
+            const response = await fetch("/api/control", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: button.dataset.action,
+                speed: Number(document.querySelector("#speed").value),
+              }),
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error);
+            await refresh();
+          } catch (e) {
+            error.textContent = e.message;
+          }
+        };
+      refresh();
+      setInterval(refresh, 1000);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+services:
+  timing-simulator:
+    build:
+      context: ..
+      dockerfile: simulator/Dockerfile
+    ports:
+      - "127.0.0.1:5409:5409"
+      - "127.0.0.1:8790:8790"
+    environment:
+      FORMAT: vola
+    init: true
