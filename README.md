@@ -26,15 +26,15 @@ The installer copies the package into `~/Library/Application Support/obs-studio/
 
 ## First test without VOLA
 
-1. In race control, select **Tietolähde → Demo** (Data source → Demo) and click **Tallenna ja yhdistä** (Save and connect).
-2. Click **Käynnistä demo** (Start demo). Racers advance automatically, with a running clock before each finish.
+1. In race control, select **Data source → Demo** and click **Save and connect**.
+2. Click **Start demo**. Racers advance automatically, with a running clock before each finish.
 3. Add another **Ski Race Overlay** source in OBS. Select **Display → Category top 10** and enter `Demo` as the category.
-4. Click **Seuraava laskija** (Next racer) in race control to add a test result immediately.
+4. Click **Next racer** in race control to add a test result immediately.
 5. Place a camera or other video source below the graphics and check transparency.
 
-The demo uses synthetic racers in the `Demo` category. The first racer is always fastest. Demo results and the demo roster are separate from live race data. **Pysäytä** (Stop) pauses the demo; **Nollaa demo** (Reset demo) clears its results.
+The demo uses synthetic racers in the `Demo` category. The first racer is always fastest. Demo results and the demo roster are separate from live race data. **Stop** pauses the demo; **Reset demo** clears its results.
 
-The canvas is 1920 × 1080. The racer graphic appears along the bottom, with a category badge beside the racer details and the club below the name. Competition naming and the **DEMO**/**TESTI** markers are separate from the category. Each top 10 source can display a different category; an empty category field selects the first available category. To follow the current racer or latest finisher automatically, enter `auto` as the category or use `http://127.0.0.1:8787/overlay/top10?category=auto`. Automatic mode shows no category standings when that racer has no category.
+The canvas is 1920 × 1080. The racer graphic appears along the bottom, with a category badge beside the racer details and the club below the name. Competition naming and the **DEMO**/**TEST** markers are separate from the category. Each top 10 source can display a different category; an empty category field selects the first available category. To follow the current racer or latest finisher automatically, enter `auto` as the category or use `http://127.0.0.1:8787/overlay/top10?category=auto`. Automatic mode shows no category standings when that racer has no category.
 
 ## Automatic race coverage
 
@@ -56,11 +56,13 @@ A missing finish is not automatically classified as DNF. Terminal statuses must 
 
 ## Competitor roster
 
-Set **Kilpailun nimi** (Competition name) above the CSV import controls and click **Tallenna kilpailun nimi** (Save competition name). The optional name appears on both overlays, independently of the category and DEMO/TESTI markers. It defaults to blank; saving an empty value hides it. Use up to 120 characters without control characters. Saving the competition name keeps the timing connection running.
+Race control is always in English. Set **Broadcast language** to **English** or **Suomi** and click **Save broadcast language** to change overlay text, including previews. Existing installations default to Finnish. Racer names, category names and competition names keep their original text. Changing the language keeps timing connected.
 
-Select the competition discipline beside the competition name and CSV controls: **GS**, **SL**, **TAITO**, **SG**, **SUP**, **DH** or **Other**. The saved discipline appears as a red badge separate from the racer's category and DEMO/TESTI marker. **Other** is the default and hides only the discipline badge. Saving the discipline keeps active clocks and the timing connection running.
+Set **Competition name** above the CSV import controls and click **Save competition name**. The optional name appears on both overlays, independently of the category and DEMO/TEST markers. It defaults to blank; saving an empty value hides it. Use up to 120 characters without control characters. Saving the competition name keeps the timing connection running.
 
-Import a roster in **Kilpailijat** (Competitors) by uploading a file, pasting roster text or entering an HTTP(S) roster URL. CSV and tab-separated VOLA TXT exports are accepted, including title lines and the final competitor count. UTF-8 (with or without BOM) and Windows-1252 files preserve accented names. The URL must return the file directly. **Hae lista** (Fetch roster) saves a local copy; the service does not keep polling that URL.
+Select the competition discipline beside the competition name and CSV controls: **GS**, **SL**, **TAITO**, **SG**, **SUP**, **DH** or **Other**. The saved discipline appears as a red badge separate from the racer's category and DEMO/TEST marker. **Other** is the default and hides only the discipline badge. Saving the discipline keeps active clocks and the timing connection running.
+
+Import a roster in **Competitors** by uploading a file, pasting roster text or entering an HTTP(S) roster URL. CSV and tab-separated VOLA TXT exports are accepted, including title lines and the final competitor count. UTF-8 (with or without BOM) and Windows-1252 files preserve accented names. The URL must return the file directly. **Fetch roster** saves a local copy; the service does not keep polling that URL.
 
 ```csv
 bib,name,category,club
@@ -77,13 +79,13 @@ bib,name,category,club
 - An unknown bib shows its bib and time with blank name, category and club. Racers without a category do not appear in category standings or receive a rank.
 - An invalid import is rejected in full, keeping the previous roster.
 
-Reimporting updates names, categories and clubs for results already received. **Lataa nykyinen CSV** (Download current CSV) downloads the active roster. With **Testisyöte** (Test feed) enabled, imports and results use a separate test race and the overlay displays **TESTI** (TEST).
+Reimporting updates names, categories and clubs for results already received. **Download current CSV** downloads the active roster. With **Test feed** enabled, imports and results use a separate test race and the overlay displays **TEST** (English) or **TESTI** (Finnish).
 
 ## VOLA SQLite Bridge
 
 The separate [Ski Stream Bridge](https://github.com/ataskinen/ski-stream-bridge) reads the selected VOLA event's main and extra SQLite files on the timing PC. In race control choose **VOLA SQLite Bridge**, enter the timing PC's address, port (normally `8789`) and its generated connection key, then save and connect. Names, categories, clubs, birth years and competition name come from the bridge; CSV imports are disabled for this source.
 
-Select **Automatic race coverage** in the OBS source. A snapshot starts category Top 10 rotation immediately, using the category duration setting (normally 10 seconds). Enable **Testisyöte** when showing an archive. Results are synchronized without replaying old finish events. With start reading enabled, the bridge also supplies active racers and restores the standard automation: independent clocks, compact stacks, finish/DNF/DSQ holds, last-category standings and idle rotation. With a current bridge, the second-run skier card shows the combined time large and the individual run time small. If the first run has no valid finish, the combined time is a dash while the individual run still runs and shows its official finish. Top 10 continues to use combined standings only. Individual results seed silently on connect and produce finish holds only for a matching observed run. Older bridges retain their existing single-clock display.
+Select **Automatic race coverage** in the OBS source. A snapshot starts category Top 10 rotation immediately, using the category duration setting (normally 10 seconds). Enable **Test feed** when showing an archive. Results are synchronized without replaying old finish events. With start reading enabled, the bridge also supplies active racers and restores the standard automation: independent clocks, compact stacks, finish/DNF/DSQ holds, last-category standings and idle rotation. With a current bridge, the second-run skier card shows the combined time large and the individual run time small. If the first run has no valid finish, the combined time is a dash while the individual run still runs and shows its official finish. Top 10 continues to use combined standings only. Individual results seed silently on connect and produce finish holds only for a matching observed run. Older bridges retain their existing single-clock display.
 
 Running clocks are local estimates: a newly received start delta starts at zero (plus the previous-run base time for a cumulative run). VOLA timestamps do not set the elapsed clock. Official database results replace the estimate at finish; DNF and DSQ keep their normal terminal display. Repeated updates do not restart clocks. Reconnects within the same bridge session retain observed start anchors; active racers first seen in a snapshot or a new bridge session show “On course” (RADALLA) without a numeric time until a new start is observed. Restoring a cancelled finish does not create a new clock; starts that occurred while disconnected, or arrive later with a start timestamp at or before the previous latest accepted start, remain unknown. A stale connection freezes the display; recovery resumes the original local estimate. Results-only mode remains the default for archives. Live VOLA start-status mapping must be validated on the timing PC; the synthetic full-race demo is explicitly configured as a simulation.
 
@@ -100,11 +102,11 @@ Rebuild and reinstall this plugin version before using the bridge option. The We
 This plugin consumes the TCP events directly and gets names and categories from CSV. Kiril's original program does not need to run alongside it just to relay data.
 
 1. Confirm that VOLA broadcasts timing events and the timing PC's firewall allows the connection.
-2. Select **Tietolähde → TCP-yhteys** (Data source → TCP connection). Disable **Testisyöte** (Test feed) for a real race.
+2. Select **Data source → TCP connection**. Disable **Test feed** for a real race.
 3. Save the settings and import the real competitor CSV.
-4. Select **TCP-tietomuoto → VOLA / NR-protokolla (kokeellinen)** (TCP format → VOLA / NR protocol, experimental).
+4. Select **TCP format → VOLA / NR protocol (experimental)**.
 5. Enter the timing PC's address or hostname and port; the default port is `5409`.
-6. Click **Tallenna ja yhdistä** (Save and connect), then send a new start and finish from VOLA.
+6. Click **Save and connect**, then send a new start and finish from VOLA.
 
 Enter only the address or hostname, such as `timing-pc.local`, in the host field. The port has its own field. Both computers must be able to communicate; sharing a Wi-Fi network name alone does not guarantee connectivity.
 
@@ -116,7 +118,7 @@ During a run, the clock is marked **ARVIOITU AIKA** (ESTIMATED TIME): it advance
 
 The top 10 sorts times from fastest to slowest within each category. Each row shows the racer's time and gap behind that category's current leader. It uses the **last finish received for each bib**, so a correction replaces an earlier time. This version does not calculate a two-run total or choose a racer's best attempt. Clear live results through the control panel's confirmation prompt before starting another race or separate run.
 
-After a finish, the racer graphic shows the rank within that racer's own category. Ties share a rank and leave a gap before the next rank, for example **1, 1, 3**. A slower result shows a positive gap in red; a new leader shows a negative gap in green compared with the previous leader. A tie shows zero. The first finisher has no comparison time and displays **JOHDOSSA** (IN THE LEAD). During a run, no finish rank or leader comparison is shown. Without a category, the racer's time remains visible but no rank or gap is calculated.
+After a finish, the racer graphic shows the rank within that racer's own category. Ties share a rank and leave a gap before the next rank, for example **1, 1, 3**. A slower result shows a positive gap in red; a new leader shows a negative gap in green compared with the previous leader. A tie shows zero. The first finisher has no comparison time and displays **LEADER** (English) or **JOHDOSSA** (Finnish). During a run, no finish rank or leader comparison is shown. Without a category, the racer's time remains visible but no rank or gap is calculated.
 
 When a disconnect is detected, the running clock freezes and the overlay reports the interruption. Silence between start and finish events is allowed; detecting a broken TCP connection may take time. Restarting restores saved results, roster and settings, but not a run in progress. Connecting to VOLA during a run waits for the next start because the missing start time is unknown. `S` on-course lists are not yet used.
 
@@ -139,13 +141,13 @@ node simulator/server.mjs
 Use one launch method at a time. The simulator uses TCP port `5409` and control-panel port `8790`, so stop any running `examples/mock-feed.mjs` instance first.
 
 1. Open OBS race control at <http://127.0.0.1:8787>.
-2. Expand **Testaa Docker-kilpailusimulaattorilla** (Test with the Docker competition simulator) and click **Täytä paikallisen simulaattorin asetukset** (Fill local simulator settings).
-3. Click **Tallenna ja yhdistä** (Save and connect). The preset selects TCP, VOLA format, `127.0.0.1`, port `5409` and **Testisyöte** (Test feed).
-4. Click **Hae lista** (Fetch roster). The preset roster URL is <http://127.0.0.1:8790/competitors.csv>.
+2. Expand **Test with the Docker competition simulator** and click **Fill local simulator settings**.
+3. Click **Save and connect**. The preset selects TCP, VOLA format, `127.0.0.1`, port `5409` and **Test feed**.
+4. Click **Fetch roster**. The preset roster URL is <http://127.0.0.1:8790/competitors.csv>.
 5. Set the top 10 source's category to `Demo`.
 6. Open <http://127.0.0.1:8790> and start the competition. Connect OBS before the first start: joining during a run waits for the next start.
 
-The roster has nine synthetic competitors. The first finishes in `30.00`; all others are slower. The overlay displays **TESTI** (TEST). The test roster and results are stored separately from the live race.
+The roster has nine synthetic competitors. The first finishes in `30.00`; all others are slower. The overlay displays **TEST** (English) or **TESTI** (Finnish). The test roster and results are stored separately from the live race.
 
 The simulator starts paused at **1×** speed. Starting continues racers in order. Pause lets the current racer finish before stopping. Next immediately sends either the next start or the current racer's finish. Reset restores the starting order and disconnects test clients; OBS reconnects automatically. **Resetting the simulator does not clear overlay standings**: reset test results separately in race control.
 
@@ -168,7 +170,7 @@ cd /path/to/ski-stream-overlay
 node examples/mock-feed.mjs
 ```
 
-Select **TCP-yhteys → JSON-viestit riveittäin** (TCP connection → JSON events, one per line), host `127.0.0.1`, port `5409` and **Testisyöte** (Test feed). Save and import `examples/competitors.csv`. Open the simulator panel at <http://127.0.0.1:8790> and start the competition; the feed starts paused. It uses the Docker simulator's racers and controls but sends JSON events. Stop it with `Ctrl+C`.
+Select **TCP connection → JSON events, one per line**, host `127.0.0.1`, port `5409` and **Test feed**. Save and import `examples/competitors.csv`. Open the simulator panel at <http://127.0.0.1:8790> and start the competition; the feed starts paused. It uses the Docker simulator's racers and controls but sends JSON events. Stop it with `Ctrl+C`.
 
 HTTP / JSON mode accepts a separate service URL and polling interval. Use it with your own timing bridge; Kiril's original project does not provide this endpoint. See [PROTOCOL.md](PROTOCOL.md) for message formats and limits.
 

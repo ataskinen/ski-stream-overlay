@@ -10,6 +10,7 @@ import {
   saveConnectionConfig,
   savePresentationSettings,
   saveDiscipline,
+  saveBroadcastLanguage,
 } from "./shared.js";
 
 const $ = (id) => document.getElementById(id);
@@ -17,6 +18,8 @@ let toastTimeout;
 let activeState;
 let eventNameDirty = false;
 let eventNameReceived = false;
+let broadcastLanguageDirty = false;
+let broadcastLanguageReceived = false;
 let disciplineDirty = false;
 let disciplineReceived = false;
 let presentationDirty = false;
@@ -44,9 +47,9 @@ function toast(message, error = false) {
 async function action(task, feedbackId) {
   const feedback = feedbackId && $(feedbackId);
   try {
-    if (feedback) feedback.textContent = "Käsitellään…";
+    if (feedback) feedback.textContent = "Working…";
     await task();
-    if (feedback) feedback.textContent = "Tallennettu.";
+    if (feedback) feedback.textContent = "Saved.";
   } catch (error) {
     if (feedback) feedback.textContent = error.message;
     toast(error.message, true);
@@ -68,6 +71,10 @@ function updateLinks() {
 }
 function render(state) {
   activeState = state;
+  if (typeof state.broadcastLanguage === "string") {
+    broadcastLanguageReceived = true;
+    if (!broadcastLanguageDirty) $("broadcast-language").value = state.broadcastLanguage;
+  }
   if (typeof state.discipline === "string") {
     disciplineReceived = true;
     if (!disciplineDirty) $("discipline").value = state.discipline;
@@ -85,18 +92,18 @@ function render(state) {
   $("reset-live").disabled = reset.disabled;
   $("reset-helper").textContent = reset.helper;
   const labels = {
-    idle: "Valmis",
-    connected: "Yhteys toimii",
-    connecting: "Yhdistetään",
-    disconnected: "Ei yhteyttä",
-    error: "Yhteysvirhe",
-    stopped: "Pysäytetty",
-    stale: "Tiedot eivät päivity",
-    paused: "Demo pysäytetty",
-    demo: "Demo käytössä",
+    idle: "Ready",
+    connected: "Connected",
+    connecting: "Connecting",
+    disconnected: "Disconnected",
+    error: "Connection error",
+    stopped: "Stopped",
+    stale: "Data is stale",
+    paused: "Demo paused",
+    demo: "Demo active",
   };
   $("mode-badge").textContent =
-    feedLabel(state) === "SKI RACE" ? "AJANOTTO" : feedLabel(state);
+    feedLabel({ ...state, broadcastLanguage: "en" }) === "SKI RACE" ? "TIMING" : feedLabel({ ...state, broadcastLanguage: "en" });
   $("mode-badge").classList.toggle(
     "live",
     state.mode !== "demo" && !state.testFeed,
@@ -104,29 +111,9 @@ function render(state) {
   $("connection-status").textContent =
     labels[state.connection?.status] ||
     state.connection?.status ||
-    "Odottaa tietoja";
-  const messages = {
-    "Demo ready": "Demo valmis",
-    "Demo ready — press Next racer or Start demo":
-      "Demo valmis — valitse Seuraava laskija tai Käynnistä demo",
-    "Simulated data — not live race results":
-      "Testidataa · ei kilpailun live-tuloksia",
-    "Feed stopped": "Datayhteys pysäytetty",
-    "Receiving timing data": "Vastaanotetaan ajanottotietoja",
-    "HTTP feed connected": "HTTP-datayhteys toimii",
-    "HTTP feed unavailable or invalid; retrying":
-      "HTTP-syöte ei vastaa tai data on virheellistä · yritetään uudelleen",
-    "Connecting to timing feed": "Yhdistetään ajanottosyötteeseen",
-    "TCP feed connected; waiting for events":
-      "TCP-yhteys toimii · odotetaan ajanottotapahtumia",
-    "Invalid timing message received":
-      "Vastaanotettiin virheellinen ajanottoviesti",
-    "TCP feed disconnected; retrying":
-      "TCP-yhteys katkesi · yritetään uudelleen",
-    "Connecting to HTTP timing feed": "Yhdistetään HTTP-ajanottosyötteeseen",
-  };
+    "Waiting for data";
   $("connection-message").textContent =
-    (messages[state.connection?.message] || state.connection?.message || "") +
+    (state.connection?.message || "") +
     (state.bridgeCompetition?.warnings?.length ? " · " + state.bridgeCompetition.warnings.join(" ") : "");
   const previous = $("category").value;
   const categories = (state.categories || []).filter((category) =>
@@ -136,7 +123,7 @@ function render(state) {
     .slice(1)
     .map((option) => option.value);
   if (JSON.stringify(existing) !== JSON.stringify(categories)) {
-    const blank = element("option", "", "Ensimmäinen sarja");
+    const blank = element("option", "", "First category");
     blank.value = "";
     $("category").replaceChildren(
       blank,
@@ -152,16 +139,16 @@ function render(state) {
   const roster = state.liveRoster || state.roster || [];
   const rosterKind =
     state.rosterTarget === "test"
-      ? "Testikilpailijalista"
+      ? "Test roster"
       : state.rosterTarget === "live"
-        ? "Live-kilpailijalista"
+        ? "Live roster"
         : state.mode === "demo"
-          ? "Tallennettu tuontilista"
+          ? "Saved imported roster"
           : state.testFeed
-            ? "Testikilpailijalista"
-            : "Live-kilpailijalista";
+            ? "Test roster"
+            : "Live roster";
   $("roster-count").textContent =
-    `${rosterKind}: ${roster.length} kilpailijaa${state.mode === "demo" ? " · näytöissä erillinen demolista" : ""}`;
+    `${rosterKind}: ${roster.length} competitors${state.mode === "demo" ? " · overlays use a separate demo roster" : ""}`;
   const results = [...(state.results || [])].sort(
     (a, b) =>
       (a.category || "").localeCompare(b.category || "") ||
@@ -188,7 +175,7 @@ function render(state) {
     const td = element(
       "td",
       "empty-cell",
-      "Ei vielä tuloksia. Käynnistä demo tai yhdistä ajanottoon.",
+      "No results yet. Start the demo or connect timing.",
     );
     td.colSpan = 5;
     tr.append(td);
@@ -215,11 +202,11 @@ $("config-form").addEventListener("submit", (event) => {
       config.volaStatusMap = JSON.parse($("vola-status-map").value);
     } catch {
       throw new Error(
-        "VOLA-tapahtumakoodien pitää olla kelvollinen JSON-objekti.",
+        "VOLA event codes must be a valid JSON object.",
       );
     }
     await saveConnectionConfig(config);
-    toast("Ajanoton asetukset tallennettu.");
+    toast("Timing settings saved.");
   }, "config-feedback");
 });
 $("presentation-form").addEventListener("input", () => {
@@ -241,7 +228,7 @@ $("presentation-form").addEventListener("submit", (event) => {
       )
     )
       presentationDirty = false;
-    toast("Automaattisen kisaseurannan näyttöajat tallennettu.");
+    toast("Automatic display durations saved.");
   }, "presentation-feedback");
 });
 $("event-name").addEventListener("input", () => {
@@ -256,8 +243,20 @@ $("discipline-form").addEventListener("submit", (event) => {
   action(async () => {
     await saveDiscipline(submitted);
     if ($("discipline").value === submitted) disciplineDirty = false;
-    toast("Laji tallennettu.");
+    toast("Discipline saved.");
   }, "discipline-feedback");
+});
+$("broadcast-language").addEventListener("change", () => {
+  broadcastLanguageDirty = true;
+});
+$("broadcast-language-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const submitted = $("broadcast-language").value;
+  action(async () => {
+    await saveBroadcastLanguage(submitted);
+    if ($("broadcast-language").value === submitted) broadcastLanguageDirty = false;
+    toast("Broadcast language saved.");
+  }, "broadcast-language-feedback");
 });
 $("event-form").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -268,7 +267,7 @@ $("event-form").addEventListener("submit", (event) => {
       eventNameDirty = false;
       $("event-name").value = submitted;
     }
-    toast("Kilpailun nimi tallennettu.");
+    toast("Competition name saved.");
   }, "event-feedback");
 });
 $("simulator-preset").addEventListener("click", () => {
@@ -280,8 +279,8 @@ $("simulator-preset").addEventListener("click", () => {
   $("test-feed").checked = true;
   updateModeFields();
   $("config-feedback").textContent =
-    "Testiasetukset täytetty. Paina Tallenna ja yhdistä, sitten Hae lista kilpailijalistan kohdalla.";
-  toast("Simulaattorin asetukset täytetty. Yhteyttä ei vielä muutettu.");
+    "Test settings filled in. Click Save and connect, then Fetch roster.";
+  toast("Simulator settings filled in. The connection has not changed yet.");
 });
 $("csv-file").addEventListener("change", () =>
   action(async () => {
@@ -289,10 +288,10 @@ $("csv-file").addEventListener("change", () =>
     if (!file) return;
     if (file.size > 2_000_000)
       throw new Error(
-        "Kilpailijalistatiedosto on liian suuri (enintään 2 Mt).",
+        "Roster file is too large (maximum 2 MB).",
       );
     $("csv-text").value = decodeRosterText(await file.arrayBuffer());
-    toast("Tiedosto luettu. Paina Tuo kilpailijat tallentaaksesi listan.");
+    toast("File loaded. Click Import competitors to save the roster.");
   }),
 );
 $("roster-form").addEventListener("submit", (event) => {
@@ -302,7 +301,7 @@ $("roster-form").addEventListener("submit", (event) => {
       method: "POST",
       body: JSON.stringify({ csv: $("csv-text").value }),
     });
-    toast("Kilpailijalista tuotu.");
+    toast("Roster imported.");
   }, "roster-feedback");
 });
 $("roster-url-form").addEventListener("submit", (event) => {
@@ -312,7 +311,7 @@ $("roster-url-form").addEventListener("submit", (event) => {
       method: "POST",
       body: JSON.stringify({ url: $("roster-url").value.trim() }),
     });
-    toast("Kilpailijalista haettu ja tallennettu.");
+    toast("Roster fetched and saved.");
   }, "roster-feedback");
 });
 document.querySelectorAll("[data-demo]").forEach((button) =>
@@ -324,7 +323,7 @@ document.querySelectorAll("[data-demo]").forEach((button) =>
       });
       $("mode").value = "demo";
       updateModeFields();
-      toast("Demon tila päivitetty.");
+      toast("Demo updated.");
     }),
   ),
 );
@@ -332,7 +331,7 @@ document.querySelectorAll("[data-copy]").forEach((button) =>
   button.addEventListener("click", () =>
     action(async () => {
       await navigator.clipboard.writeText($(button.dataset.copy).value);
-      toast("Osoite kopioitu.");
+      toast("URL copied.");
     }),
   ),
 );
@@ -358,6 +357,8 @@ document
   .forEach((stage) => previews.observe(stage));
 request("/api/config")
   .then((config) => {
+    if (!broadcastLanguageDirty && !broadcastLanguageReceived)
+      $("broadcast-language").value = config.broadcastLanguage || "fi";
     if (!disciplineDirty && !disciplineReceived)
       $("discipline").value = config.discipline || "Other";
     if (!presentationReceived) populatePresentation(config);
@@ -384,7 +385,7 @@ request("/api/config")
   })
   .catch((error) => toast(error.message, true));
 connectState(render, () => {
-  $("connection-status").textContent = "Yhteys ohjauspalveluun katkesi";
+  $("connection-status").textContent = "Race control disconnected";
   $("connection-message").textContent =
-    "Yhdistetään automaattisesti uudelleen…";
+    "Reconnecting automatically…";
 });

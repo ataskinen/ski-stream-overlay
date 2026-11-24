@@ -1,3 +1,35 @@
+export const BROADCAST_TEXT = {
+  fi: {
+    test: "TESTI", leader: "JOHDOSSA", onCourse: "RADALLA",
+    estimatedTime: "RADALLA · ARVIOITU AIKA", estimatedTotal: "YHTEISAIKA · ARVIO",
+    total: "YHTEISAIKA", totals: "YHTEISAJAT", singleRunTimes: "YHDEN LASKUN AJAT",
+    finishTime: "MAALIAIKA", didNotFinish: "KESKEYTTI", disqualified: "HYLÄTTY",
+    bib: "NUMERO", rank: "SIJA", run: "LASKU", runs: "Laskut",
+    totalTimes: "yhteisajat", runTimes: "laskuajat",
+    waitingResults: "Odotetaan sarjan tuloksia", selectCategory: "Valitse sarja kilpailijalistasta",
+    waitingRacer: "Odotetaan laskijaa", disconnected: "YHTEYS KATKENNUT",
+    staleResults: "Yhteys katkennut · viimeksi vastaanotetut tulokset",
+    serviceDisconnected: "Yhteys ohjauspalveluun katkesi · viimeksi vastaanotetut tulokset",
+    latestResults: "Viimeisin maalintulo / kilpailija · ei yhteisaikoja",
+  },
+  en: {
+    test: "TEST", leader: "LEADER", onCourse: "ON COURSE",
+    estimatedTime: "ON COURSE · ESTIMATED TIME", estimatedTotal: "TOTAL · ESTIMATE",
+    total: "TOTAL", totals: "COMBINED TIMES", singleRunTimes: "SINGLE RUN TIMES",
+    finishTime: "FINISH TIME", didNotFinish: "DID NOT FINISH", disqualified: "DISQUALIFIED",
+    bib: "BIB", rank: "RANK", run: "RUN", runs: "Runs",
+    totalTimes: "combined times", runTimes: "run times",
+    waitingResults: "Waiting for category results", selectCategory: "Select a category from the roster",
+    waitingRacer: "Waiting for a racer", disconnected: "DISCONNECTED",
+    staleResults: "Disconnected · last received results",
+    serviceDisconnected: "Race control disconnected · last received results",
+    latestResults: "Latest finish per racer · no combined times",
+  },
+};
+export function broadcastText(language = "fi") {
+  return Object.hasOwn(BROADCAST_TEXT, language) ? BROADCAST_TEXT[language] : BROADCAST_TEXT.fi;
+}
+
 export function decodeRosterText(bytes) {
   if (bytes.byteLength > 2_000_000)
     throw new Error("Competitor file must be smaller than 2 MB.");
@@ -26,7 +58,7 @@ export function formatTime(value) {
 }
 export function feedLabel(state) {
   if (state.mode === "demo") return "DEMO";
-  return state.testFeed ? "TESTI" : "SKI RACE";
+  return state.testFeed ? broadcastText(state.broadcastLanguage).test : "SKI RACE";
 }
 export const DISCIPLINES = ["GS", "SL", "TAITO", "SG", "SUP", "DH", "Other"];
 export function disciplineLabel(discipline) {
@@ -39,7 +71,7 @@ export function formatGap(value) {
   const sign = value < 0 ? "−" : value > 0 ? "+" : "";
   return `${sign}${formatTime(Math.abs(value))}`;
 }
-export function finishSummary(current) {
+export function finishSummary(current, language = "fi") {
   if (
     !current?.finished ||
     ["dnf", "dsq"].includes(String(current.status || "").toLowerCase()) ||
@@ -55,7 +87,7 @@ export function finishSummary(current) {
     gap: Number.isFinite(delta)
       ? formatGap(delta)
       : current.isLeader
-        ? "JOHDOSSA"
+        ? broadcastText(language).leader
         : formatGap(current.gapToLeaderMs),
     tone:
       Number.isFinite(comparison) && comparison < 0
@@ -126,21 +158,18 @@ export function resetContext(state) {
   if (!state || state.mode === "demo")
     return {
       disabled: true,
-      label: "Demo nollataan yllä olevasta painikkeesta",
-      helper:
-        "Demo on käytössä. Nollaa sen tulokset Nollaa demo -painikkeella. Live- ja testitulokset säilyvät.",
+      label: "Use Reset demo above",
+      helper: "Demo is active. Use Reset demo to clear its results. Live and test results are kept.",
     };
-  const kind = state.testFeed ? "testi" : "live";
+  const kind = state.testFeed ? "test" : "live";
   return {
     disabled: false,
-    label: state.testFeed ? "Nollaa testitulokset…" : "Nollaa live-tulokset…",
+    label: state.testFeed ? "Reset test results…" : "Reset live results…",
     helper: state.testFeed
-      ? "Nollaa testisyötteen tulokset ennen uutta testikierrosta. Oikean kilpailun live-tulokset säilyvät."
-      : "Nollaa live-tulokset ennen uutta kilpailua tai laskukierrosta.",
-    confirm: `Nollataanko kaikki ${kind === "live" ? "live-" : "testi"}tulokset ja tämän syötteen radalla olevan laskijan tila? Kilpailijalista säilytetään.`,
-    success: state.testFeed
-      ? "Testitulokset nollattu."
-      : "Live-tulokset nollattu.",
+      ? "Reset test-feed results before another test. Live race results are kept."
+      : "Reset live results before a new race or run.",
+    confirm: `Reset all ${kind} results and active racers for this feed? The roster will be kept.`,
+    success: state.testFeed ? "Test results reset." : "Live results reset.",
   };
 }
 export async function request(path, options = {}) {
@@ -152,22 +181,30 @@ export async function request(path, options = {}) {
   const data = await response.json();
   if (!response.ok)
     throw new Error(
-      data.error || data.message || `Pyyntö epäonnistui (${response.status}).`,
+      data.error || data.message || `Request failed (${response.status}).`,
     );
   return data;
 }
 export function saveEventName(eventName) {
   const value = eventName.trim();
   if (value.length > 120)
-    throw new Error("Kilpailun nimi saa olla enintään 120 merkkiä.");
+    throw new Error("Competition name must be at most 120 characters.");
   return request("/api/config", {
     method: "PUT",
     body: JSON.stringify({ eventName: value }),
   });
 }
+export function saveBroadcastLanguage(broadcastLanguage) {
+  if (!["en", "fi"].includes(broadcastLanguage))
+    throw new Error("Choose English or Finnish as the broadcast language.");
+  return request("/api/config", {
+    method: "PUT",
+    body: JSON.stringify({ broadcastLanguage }),
+  });
+}
 export function saveDiscipline(discipline) {
   if (!DISCIPLINES.includes(discipline))
-    throw new Error("Valitse laji luettelosta.");
+    throw new Error("Choose a discipline from the list.");
   return request("/api/config", {
     method: "PUT",
     body: JSON.stringify({ discipline }),
@@ -183,7 +220,7 @@ export function savePresentationSettings(settings) {
   for (const [key, [minimum, maximum]] of Object.entries(fields)) {
     const value = settings[key];
     if (!Number.isFinite(value) || value < minimum || value > maximum)
-      throw new Error("Tarkista näytön vaihtumisen ajat ja sallitut rajat.");
+      throw new Error("Check the display durations and their allowed ranges.");
     values[key] = Math.round(value);
   }
   return request("/api/config", {

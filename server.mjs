@@ -23,11 +23,14 @@ export const defaultConfig = {
   testFeed: false,
   eventName: "",
   discipline: "Other",
+  broadcastLanguage: "fi",
   ...presentationDefaults,
   volaStatusMap: defaultVolaStatusMap,
 };
 function configFor(input) {
   const c = { ...defaultConfig, ...input };
+  if (!["en", "fi"].includes(c.broadcastLanguage))
+    throw new Error("Broadcast language must be en or fi.");
   if (!["GS", "SL", "TAITO", "SG", "SUP", "DH", "Other"].includes(c.discipline))
     throw new Error("Discipline must be GS, SL, TAITO, SG, SUP, DH or Other.");
   for (const [key, min, max] of [
@@ -182,6 +185,7 @@ export async function createApp({
       eventName: bridgeCompetition?.name ?? config.eventName,
       bridgeCompetition,
       discipline: config.discipline,
+      broadcastLanguage: config.broadcastLanguage,
       presentationSettings: Object.fromEntries(
         Object.keys(presentationDefaults).map((key) => [key, config[key]]),
       ),

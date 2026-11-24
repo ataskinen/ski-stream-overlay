@@ -1011,3 +1011,42 @@ test("HTTP demo, live and simulator rosters and results remain isolated across i
   await api("/api/config", "PUT", { mode: "tcp", testFeed: false, port: 9 });
   assert.equal((await api("/api/state", "GET")).results[0].name, "Real racer");
 });
+
+
+test("broadcast language defaults to Finnish, persists, streams and validates without reconnecting timers", async (t) => {
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "ski-overlay-language-"));
+  await writeFile(path.join(dataDir, "state.json"), JSON.stringify({ config: { mode: "tcp", eventName: "Example Cup" } }));
+  const feeds = [];
+  const connector = (config, event) => { feeds.push({ config, event }); return () => {}; };
+  let app = await createApp({ dataDir, feedConnector: connector });
+  t.after(async () => { await app.close(); await rm(dataDir, { recursive: true, force: true }); });
+  assert.equal((await directRequest(app, "/api/config")).body.broadcastLanguage, "fi");
+  assert.equal(app.state().broadcastLanguage, "fi");
+  const request = new PassThrough();
+  request.url = "/api/events"; request.method = "GET"; request.headers = { host: "127.0.0.1:8787" };
+  const messages = [];
+  app.server.emit("request", request, { writeHead() {}, write(chunk) { messages.push(chunk); return true; }, end() {} });
+  feeds[0].event({ type: "start", bib: "1" });
+  for (const broadcastLanguage of ["en", "fi", "en"]) {
+    const response = await directRequest(app, "/api/config", "PUT", { broadcastLanguage });
+    assert.equal(response.status, 200);
+    assert.equal(response.body.broadcastLanguage, broadcastLanguage);
+    assert.equal(app.state().broadcastLanguage, broadcastLanguage);
+    assert.equal(app.state().current.running, true);
+    assert.equal(app.state().eventName, "Example Cup");
+    assert.equal(feeds.length, 1);
+    const snapshot = messages.filter(chunk => chunk.startsWith("data: ")).at(-1);
+    assert.equal(JSON.parse(snapshot.slice(6)).broadcastLanguage, broadcastLanguage);
+  }
+  for (const broadcastLanguage of ["EN", "sv", "", null, 1, {}, ["en"]]) {
+    const response = await directRequest(app, "/api/config", "PUT", { broadcastLanguage });
+    assert.equal(response.status, 400);
+    assert.match(response.body.error, /Broadcast language must be en or fi/);
+    assert.equal(app.state().broadcastLanguage, "en");
+  }
+  request.emit("close");
+  await app.close();
+  app = await createApp({ dataDir, feedConnector: connector });
+  assert.equal((await directRequest(app, "/api/config")).body.broadcastLanguage, "en");
+  assert.equal(app.state().broadcastLanguage, "en");
+});

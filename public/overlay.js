@@ -9,6 +9,7 @@ import {
   estimatedTime,
   overlaySelection,
   disciplineLabel,
+  broadcastText,
 } from "./shared.js";
 
 const root = document.getElementById("overlay-root");
@@ -19,6 +20,7 @@ let state;
 let receivedAt = 0;
 let serviceConnected = false;
 let clocks = [];
+const text = () => broadcastText(state?.broadcastLanguage);
 
 function raceClock(racer, className = "clock-time", field = "timeMs") {
   const clockRacer = field === "timeMs" ? racer : { ...racer, timeMs: racer[field] };
@@ -26,7 +28,7 @@ function raceClock(racer, className = "clock-time", field = "timeMs") {
     "strong",
     className,
     clockRacer.status === "running" && !Number.isFinite(clockRacer.timeMs) && !(field === "timeMs" && racer.totalEligible === false)
-      ? "RADALLA"
+      ? text().onCourse
       : formatTime(
           estimatedTime(
             clockRacer,
@@ -54,6 +56,7 @@ function disciplineBadge() {
 }
 function render(next) {
   state = next;
+  document.documentElement.lang = state.broadcastLanguage === "en" ? "en" : "fi";
   receivedAt = performance.now();
   serviceConnected = true;
   root.replaceChildren();
@@ -74,7 +77,7 @@ function render(next) {
     if (discipline) metadata.append(discipline);
     metadata.append(
       badge(),
-      element("span", "leaderboard-kicker", standings?.ranking === "total" ? "YHTEISAJAT" : "YHDEN LASKUN AJAT"),
+      element("span", "leaderboard-kicker", standings?.ranking === "total" ? text().totals : text().singleRunTimes),
     );
     head.append(metadata);
     if (state.eventName)
@@ -87,8 +90,8 @@ function render(next) {
           "p",
           "leaderboard-empty",
           category
-            ? "Odotetaan sarjan tuloksia"
-            : "Valitse sarja kilpailijalistasta",
+            ? text().waitingResults
+            : text().selectCategory,
         ),
       );
     for (let i = 0; i < rows.length; i++) {
@@ -115,10 +118,10 @@ function render(next) {
         "div",
         "board-footer",
         ["stale", "disconnected", "error", "connecting"].includes(state.connection?.status)
-          ? "Yhteys katkennut · viimeksi vastaanotetut tulokset"
+          ? text().staleResults
           : state.bridgeCompetition
-            ? `VOLA · Laskut ${standings.heats.join(" + ")} · ${standings.ranking === "total" ? "yhteisajat" : "laskuajat"}`
-            : "Viimeisin maalintulo / kilpailija · ei yhteisaikoja",
+            ? `VOLA · ${text().runs} ${standings.heats.join(" + ")} · ${standings.ranking === "total" ? text().totalTimes : text().runTimes}`
+            : text().latestResults,
       ),
     );
     root.append(board);
@@ -131,7 +134,7 @@ function render(next) {
         element(
           "div",
           "waiting-demo",
-          `${feedLabel(state)} · Odotetaan laskijaa`,
+          `${feedLabel(state)} · ${text().waitingRacer}`,
         ),
       );
     return;
@@ -178,7 +181,7 @@ function render(next) {
   }
   const bib = element("div", "bib-block");
   bib.append(
-    element("span", "bib-label", "NUMERO"),
+    element("span", "bib-label", text().bib),
     element("strong", "", String(current.bib)),
   );
   const athlete = element("div", "athlete-block");
@@ -197,26 +200,26 @@ function render(next) {
       "span",
       "clock-label",
       stale
-        ? "YHTEYS KATKENNUT"
+        ? text().disconnected
         : current.running
           ? separateRun
-            ? Number.isFinite(current.timeMs) ? "YHTEISAIKA · ARVIO" : "YHTEISAIKA"
+            ? Number.isFinite(current.timeMs) ? text().estimatedTotal : text().total
             : Number.isFinite(current.timeMs)
-              ? "RADALLA · ARVIOITU AIKA"
-              : "RADALLA"
+              ? text().estimatedTime
+              : text().onCourse
           : terminalStatus === "dnf"
-            ? "KESKEYTTI"
+            ? text().didNotFinish
             : terminalStatus === "dsq"
-              ? "HYLÄTTY"
-              : separateRun ? "YHTEISAIKA" : "MAALIAIKA",
+              ? text().disqualified
+              : separateRun ? text().total : text().finishTime,
     ),
   );
   const timeRow = element("div", "clock-time-row");
-  const summary = finishSummary(current);
+  const summary = finishSummary(current, state.broadcastLanguage);
   if (summary) {
     const rank = element("div", "finish-rank");
     rank.append(
-      element("span", "rank-label", "SIJA"),
+      element("span", "rank-label", text().rank),
       element("strong", "", summary.rank),
     );
     timeRow.append(rank);
@@ -234,7 +237,7 @@ function render(next) {
   const gapSlot = element("div", "clock-gap-slot");
   if (separateRun) {
     const run = element("div", "run-time-row");
-    run.append(element("span", "run-time-label", `LASKU ${current.heat}`), raceClock(current, "run-time", "runTimeMs"));
+    run.append(element("span", "run-time-label", `${text().run} ${current.heat}`), raceClock(current, "run-time", "runTimeMs"));
     gapSlot.append(run);
   }
   if (summary?.gap)
@@ -249,12 +252,12 @@ connectState(render, () => {
   const bar = root.querySelector(".lower-third");
   if (bar) {
     bar.classList.add("stale");
-    root.querySelector(".clock-label").textContent = "YHTEYS KATKENNUT";
+    root.querySelector(".clock-label").textContent = text().disconnected;
   }
   const footer = root.querySelector(".board-footer");
   if (footer)
     footer.textContent =
-      "Yhteys ohjauspalveluun katkesi · viimeksi vastaanotetut tulokset";
+      text().serviceDisconnected;
 });
 function frame() {
   if (serviceConnected)

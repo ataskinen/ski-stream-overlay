@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import {
   categoryResults,
   decodeRosterText,
@@ -16,6 +19,9 @@ import {
   DISCIPLINES,
   disciplineLabel,
   saveDiscipline,
+  saveBroadcastLanguage,
+  broadcastText,
+  BROADCAST_TEXT,
 } from "../public/shared.js";
 
 test("discipline saves only its own metadata and accepts only the offered values", async (t) => {
@@ -250,6 +256,7 @@ async function overlayHarness(t, pathname, search = "") {
   let frame;
   const values = {
     document: {
+      documentElement: { lang: "fi" },
       getElementById: () => root,
       createElement: (tag) => new Node(tag),
     },
@@ -292,6 +299,7 @@ async function overlayHarness(t, pathname, search = "") {
   return {
     root,
     getSourceCount: () => sources,
+    getLanguage: () => values.document.documentElement.lang,
     send: (state) => source.onmessage({ data: JSON.stringify(state) }),
     tick: (now) => {
       elapsed = now;
@@ -701,12 +709,12 @@ test("reset controls name the active result set and never clear live data from d
   assert.equal(resetContext({ mode: "demo", testFeed: false }).disabled, true);
   const testFeed = resetContext({ mode: "tcp", testFeed: true });
   assert.equal(testFeed.disabled, false);
-  assert.match(testFeed.label, /testitulokset/);
-  assert.match(testFeed.confirm, /testitulokset/);
+  assert.match(testFeed.label, /test results/);
+  assert.match(testFeed.confirm, /test results/);
   const live = resetContext({ mode: "tcp", testFeed: false });
   assert.equal(live.disabled, false);
-  assert.match(live.label, /live-tulokset/);
-  assert.match(live.confirm, /live-tulokset/);
+  assert.match(live.label, /live results/);
+  assert.match(live.confirm, /live results/);
 });
 
 test("simulated TCP and HTTP feeds remain explicitly marked as test data", () => {
@@ -883,4 +891,94 @@ test("top10 never substitutes individual run results for combined standings", as
   const { root, send } = await overlayHarness(t, "/overlay/top10", "?category=U12&scenario=run-results");
   send({ mode: "bridge", results: [{ bib: "1", name: "Example Racer", category: "U12", timeMs: 29000, rank: 1 }], runResults: { a: { bib: "1", timeMs: 14000 } } });
   assert.equal(root.querySelector(".row-time").textContent, "29.00");
+});
+
+
+test("broadcast languages have complete labels while management helpers stay English", async (t) => {
+  assert.deepEqual(Object.keys(BROADCAST_TEXT.en).sort(), Object.keys(BROADCAST_TEXT.fi).sort());
+  for (const language of ["en", "fi"])
+    assert.ok(Object.values(broadcastText(language)).every(value => typeof value === "string" && value.length));
+  assert.equal(broadcastText("unsupported"), BROADCAST_TEXT.fi);
+  const requests = [];
+  t.mock.method(globalThis, "fetch", async (url, options) => {
+    requests.push(JSON.parse(options.body)); return { ok: true, json: async () => ({}) };
+  });
+  await saveBroadcastLanguage("en");
+  await saveBroadcastLanguage("fi");
+  assert.deepEqual(requests, [{ broadcastLanguage: "en" }, { broadcastLanguage: "fi" }]);
+  assert.throws(() => saveBroadcastLanguage("sv"), /Choose English or Finnish/);
+  assert.throws(() => saveEventName("x".repeat(121)), /Competition name/);
+  assert.throws(() => saveDiscipline("invalid"), /Choose a discipline/);
+  assert.equal(resetContext({ mode: "tcp", testFeed: true, broadcastLanguage: "fi" }).label, "Reset test results…");
+  const control = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
+  const admin = await readFile(new URL("../public/admin.js", import.meta.url), "utf8");
+  assert.match(control, /<html lang="en">/);
+  assert.match(control, /Broadcast language/);
+  assert.match(control, /<h2>Race settings<\/h2>/);
+  assert.match(control, /<h3>Competitors<\/h3>/);
+  assert.match(control, /<option value="en">English<\/option>/);
+  assert.match(control, /<option value="fi" selected>Suomi<\/option>/);
+  assert.match(control, /Automatic race coverage preview/);
+  assert.doesNotMatch(control + admin, /[äöÄÖ]|Tallenna|Kopioi|Nollaa|Kilpailija|Yhdistetään/);
+});
+
+test("broadcast language switches all skier-card labels and keeps racer data and clocks unchanged", async (t) => {
+  const { root, send, disconnect, getLanguage } = await overlayHarness(t, "/overlay/current", "?scenario=languages");
+  const current = { bib: "1", name: "Example Ä Racer", category: "Junior", club: "Example Club", status: "running", running: true, timeMs: null };
+  const other = { ...current, bib: "2", name: "Other Racer" };
+  for (const [language, onCourse, bib, total, run, rank, leader, dnf, dsq, stale, testBadge] of [
+    ["en", "ON COURSE", "BIB", "TOTAL", "RUN 2", "RANK", "LEADER", "DID NOT FINISH", "DISQUALIFIED", "DISCONNECTED", "TEST"],
+    ["fi", "RADALLA", "NUMERO", "YHTEISAIKA", "LASKU 2", "SIJA", "JOHDOSSA", "KESKEYTTI", "HYLÄTTY", "YHTEYS KATKENNUT", "TESTI"],
+  ]) {
+    const base = { mode: "bridge", broadcastLanguage: language, eventName: "Example Cup", testFeed: true, current, activeRacers: [current, other], serverNow: 1000 };
+    send(base);
+    assert.equal(getLanguage(), language);
+    assert.equal(root.querySelector(".clock-time").textContent, onCourse);
+    assert.equal(root.querySelector(".compact-time").textContent, onCourse);
+    assert.equal(root.querySelector(".bib-label").textContent, bib);
+    assert.equal(root.querySelector(".athlete-name").textContent, current.name);
+    assert.equal(root.querySelector(".category-badge").textContent, current.category);
+    assert.equal(root.querySelector(".event-name").textContent, "Example Cup");
+    assert.equal(root.querySelector(".overlay-badge").textContent, testBadge);
+    send({ ...base, current: { ...current, heat: 2, totalEligible: true, timeMs: 29000, runTimeMs: 14000, running: false, status: "finish", finished: true, rank: 1, isLeader: true, gapToLeaderMs: 0 } });
+    assert.equal(root.querySelector(".clock-label").textContent, total);
+    assert.equal(root.querySelector(".run-time-label").textContent, run);
+    assert.equal(root.querySelector(".rank-label").textContent, rank);
+    assert.equal(root.querySelector(".finish-gap").textContent, leader);
+    assert.equal(root.querySelector(".clock-time").textContent, "29.00");
+    assert.equal(root.querySelector(".run-time").textContent, "14.00");
+    for (const [status, label] of [["dnf", dnf], ["dsq", dsq]]) {
+      send({ ...base, current: { ...current, running: false, status } });
+      assert.equal(root.querySelector(".clock-label").textContent, label);
+      assert.equal(root.querySelector(".terminal-status").textContent, status.toUpperCase());
+    }
+    disconnect();
+    assert.equal(root.querySelector(".clock-label").textContent, stale);
+  }
+});
+
+test("broadcast standings translate empty states, timing labels and stale footers in both languages", async (t) => {
+  const { root, send, disconnect } = await overlayHarness(t, "/overlay/top10", "?category=Junior&scenario=languages");
+  for (const [broadcastLanguage, total, empty, footer, stale, disconnected] of [
+    ["en", "COMBINED TIMES", "Waiting for category results", "VOLA · Runs 1 + 2 · combined times", "Disconnected · last received results", "Race control disconnected · last received results"],
+    ["fi", "YHTEISAJAT", "Odotetaan sarjan tuloksia", "VOLA · Laskut 1 + 2 · yhteisajat", "Yhteys katkennut · viimeksi vastaanotetut tulokset", "Yhteys ohjauspalveluun katkesi · viimeksi vastaanotetut tulokset"],
+  ]) {
+    const base = { mode: "bridge", broadcastLanguage, results: [], bridgeCompetition: { heats: [1, 2], ranking: "total" } };
+    send(base);
+    assert.equal(root.querySelector(".leaderboard-kicker").textContent, total);
+    assert.equal(root.querySelector(".leaderboard-empty").textContent, empty);
+    assert.equal(root.querySelector(".board-footer").textContent, footer);
+    send({ ...base, connection: { status: "stale" } });
+    assert.equal(root.querySelector(".board-footer").textContent, stale);
+    disconnect();
+    assert.equal(root.querySelector(".board-footer").textContent, disconnected);
+  }
+});
+
+
+test("every shipped browser module parses before UI behavior tests", () => {
+  for (const file of ["admin.js", "overlay.js", "shared.js"])
+    assert.doesNotThrow(() => execFileSync(process.execPath, [
+      "--check", fileURLToPath(new URL(`../public/${file}`, import.meta.url)),
+    ], { stdio: "pipe" }), `${file} must be valid JavaScript`);
 });
