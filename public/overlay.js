@@ -20,21 +20,24 @@ let receivedAt = 0;
 let serviceConnected = false;
 let clocks = [];
 
-function raceClock(racer, className = "clock-time") {
+function raceClock(racer, className = "clock-time", field = "timeMs") {
+  const clockRacer = field === "timeMs" ? racer : { ...racer, timeMs: racer[field] };
   const node = element(
     "strong",
     className,
-    formatTime(
-      estimatedTime(
-        racer,
-        state.serverNow,
-        receivedAt,
-        performance.now(),
-        serviceConnected,
-      ),
-    ),
+    clockRacer.status === "running" && !Number.isFinite(clockRacer.timeMs) && !(field === "timeMs" && racer.totalEligible === false)
+      ? "RADALLA"
+      : formatTime(
+          estimatedTime(
+            clockRacer,
+            state.serverNow,
+            receivedAt,
+            performance.now(),
+            serviceConnected,
+          ),
+        ),
   );
-  clocks.push({ node, racer });
+  clocks.push({ node, racer: clockRacer });
   return node;
 }
 function badge() {
@@ -188,6 +191,7 @@ function render(next) {
     .join(" · ");
   if (details) athlete.append(element("div", "athlete-club", details));
   const clock = element("div", "clock-block");
+  const separateRun = current.heat > 1 && Object.hasOwn(current, "runTimeMs");
   clock.append(
     element(
       "span",
@@ -195,12 +199,16 @@ function render(next) {
       stale
         ? "YHTEYS KATKENNUT"
         : current.running
-          ? "RADALLA · ARVIOITU AIKA"
+          ? separateRun
+            ? Number.isFinite(current.timeMs) ? "YHTEISAIKA · ARVIO" : "YHTEISAIKA"
+            : Number.isFinite(current.timeMs)
+              ? "RADALLA · ARVIOITU AIKA"
+              : "RADALLA"
           : terminalStatus === "dnf"
             ? "KESKEYTTI"
             : terminalStatus === "dsq"
               ? "HYLÄTTY"
-              : "MAALIAIKA",
+              : separateRun ? "YHTEISAIKA" : "MAALIAIKA",
     ),
   );
   const timeRow = element("div", "clock-time-row");
@@ -224,6 +232,11 @@ function render(next) {
   );
   clock.append(timeRow);
   const gapSlot = element("div", "clock-gap-slot");
+  if (separateRun) {
+    const run = element("div", "run-time-row");
+    run.append(element("span", "run-time-label", `LASKU ${current.heat}`), raceClock(current, "run-time", "runTimeMs"));
+    gapSlot.append(run);
+  }
   if (summary?.gap)
     gapSlot.append(element("span", `finish-gap ${summary.tone}`, summary.gap));
   clock.append(gapSlot);
@@ -246,7 +259,7 @@ connectState(render, () => {
 function frame() {
   if (serviceConnected)
     for (const { node, racer } of clocks) {
-      if (racer.running && !racer.stale)
+      if (racer.running && !racer.stale && Number.isFinite(racer.timeMs))
         node.textContent = formatTime(
           estimatedTime(racer, state.serverNow, receivedAt, performance.now()),
         );

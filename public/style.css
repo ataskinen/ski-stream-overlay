@@ -702,6 +702,20 @@ body.overlay {
   font: 700 56px/1.1 var(--number-font);
   font-variant-numeric: tabular-nums;
 }
+.run-time-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.run-time-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+.run-time {
+  font: 700 22px/1.1 var(--number-font);
+  font-variant-numeric: tabular-nums;
+}
 .clock-time-row {
   display: flex;
   min-height: 62px;
@@ -728,6 +742,7 @@ body.overlay {
   line-height: 22px;
 }
 .clock-gap-slot {
+  gap: 24px;
   height: 30px;
   min-height: 30px;
   display: flex;

@@ -202,6 +202,7 @@ export function saveConnectionConfig(config) {
     "rosterUrl",
     "testFeed",
     "volaStatusMap",
+    "bridgeKey",
   ];
   const connection = Object.fromEntries(
     fields

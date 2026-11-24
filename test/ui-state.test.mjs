@@ -102,12 +102,13 @@ test("saving connection fields cannot overwrite a concurrently edited event name
     port: 5409,
     testFeed: true,
     eventName: "Stale event name",
+    bridgeKey: "local-bridge-secret",
   });
   assert.deepEqual(requests, [
     {
       url: "/api/config",
       method: "PUT",
-      body: { mode: "tcp", host: "127.0.0.1", port: 5409, testFeed: true },
+      body: { mode: "tcp", host: "127.0.0.1", port: 5409, testFeed: true, bridgeKey: "local-bridge-secret" },
     },
   ]);
 });
@@ -841,4 +842,45 @@ test("automatic category standings label the selected category rather than the e
  const base={mode:"bridge",categories:["U10","U12"],results:[],connection:{status:"connected"},bridgeCompetition:{heats:[1,2],ranking:"total",categoryStandings:[{category:"U10",heats:[1,2],ranking:"total"},{category:"U12",heats:[1],ranking:"heat"}]}};
  send(base);assert.equal(root.querySelector(".leaderboard-kicker").textContent,"YHDEN LASKUN AJAT");assert.match(root.querySelector(".board-footer").textContent,/Laskut 1 · laskuajat/);
  base.bridgeCompetition.categoryStandings[1]={category:"U12",heats:[1,2],ranking:"total"};send(base);assert.equal(root.querySelector(".leaderboard-kicker").textContent,"YHTEISAJAT");
+});
+
+
+test("snapshot racers show on course without a numeric estimate through animation and stale updates", async (t) => {
+  const { root, send, tick } = await overlayHarness(t, "/overlay/current", "?scenario=unknown-start");
+  const current = { bib: "1", name: "Racer", status: "running", running: true, timeMs: null };
+  send({ mode: "bridge", current, activeRacers: [current], serverNow: 1000 });
+  assert.equal(root.querySelector(".clock-time").textContent, "RADALLA");
+  assert.equal(root.querySelector(".clock-label").textContent, "RADALLA");
+  tick(5000);
+  assert.equal(root.querySelector(".clock-time").textContent, "RADALLA");
+  send({ mode: "bridge", current: { ...current, running: false, stale: true }, serverNow: 6000 });
+  assert.equal(root.querySelector(".clock-time").textContent, "RADALLA");
+  assert.equal(estimatedTime(current, 1000, 0, 5000), null);
+});
+
+
+test("run2 card shows the total large and run time small in the existing fixed footer", async (t) => {
+  const { root, send, tick } = await overlayHarness(t, "/overlay/current", "?scenario=run-total");
+  const current = { bib: "1", name: "Example Racer", category: "U12", heat: 2, totalEligible: true, runTimeMs: 1000, timeMs: 16000, status: "running", running: true, updatedAt: 1000 };
+  send({ mode: "bridge", current, serverNow: 1000 });
+  assert.equal(root.querySelector(".clock-time").textContent, "16.00");
+  assert.equal(root.querySelector(".clock-gap-slot").querySelector(".run-time").textContent, "1.00");
+  tick(1000);
+  assert.equal(root.querySelector(".clock-time").textContent, "17.00");
+  assert.equal(root.querySelector(".run-time").textContent, "2.00");
+  send({ mode: "bridge", current: { ...current, timeMs: null, totalEligible: false }, serverNow: 1000 });
+  assert.equal(root.querySelector(".clock-time").textContent, "—");
+  tick(2000);
+  assert.equal(root.querySelector(".clock-time").textContent, "—");
+  assert.equal(root.querySelector(".run-time").textContent, "2.00");
+  send({ mode: "bridge", current: { ...current, running: false, finished: true, status: "finish", timeMs: 29000, runTimeMs: 14000, rank: 1, isLeader: true, gapToLeaderMs: 0 }, serverNow: 5000 });
+  assert.equal(root.querySelector(".clock-time").textContent, "29.00");
+  assert.equal(root.querySelector(".run-time").textContent, "14.00");
+  assert.equal(root.querySelector(".clock-gap-slot").querySelector(".finish-gap").textContent, "JOHDOSSA");
+});
+
+test("top10 never substitutes individual run results for combined standings", async (t) => {
+  const { root, send } = await overlayHarness(t, "/overlay/top10", "?category=U12&scenario=run-results");
+  send({ mode: "bridge", results: [{ bib: "1", name: "Example Racer", category: "U12", timeMs: 29000, rank: 1 }], runResults: { a: { bib: "1", timeMs: 14000 } } });
+  assert.equal(root.querySelector(".row-time").textContent, "29.00");
 });
