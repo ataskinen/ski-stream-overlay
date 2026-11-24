@@ -63,6 +63,7 @@ function render(next) {
       selectedCategory || isTop
         ? categoryResults(state, selectedCategory)
         : { category: "", rows: [] };
+    const standings = state.bridgeCompetition?.categoryStandings?.find(s => s.category === category) || state.bridgeCompetition;
     const board = element("section", "leaderboard");
     const head = element("header", "leaderboard-heading");
     const metadata = element("div", "board-metadata");
@@ -70,7 +71,7 @@ function render(next) {
     if (discipline) metadata.append(discipline);
     metadata.append(
       badge(),
-      element("span", "leaderboard-kicker", "YHDEN LASKUN AJAT"),
+      element("span", "leaderboard-kicker", standings?.ranking === "total" ? "YHTEISAJAT" : "YHDEN LASKUN AJAT"),
     );
     head.append(metadata);
     if (state.eventName)
@@ -110,7 +111,11 @@ function render(next) {
       element(
         "div",
         "board-footer",
-        "Viimeisin maalintulo / kilpailija · ei yhteisaikoja",
+        ["stale", "disconnected", "error", "connecting"].includes(state.connection?.status)
+          ? "Yhteys katkennut · viimeksi vastaanotetut tulokset"
+          : state.bridgeCompetition
+            ? `VOLA · Laskut ${standings.heats.join(" + ")} · ${standings.ranking === "total" ? "yhteisajat" : "laskuajat"}`
+            : "Viimeisin maalintulo / kilpailija · ei yhteisaikoja",
       ),
     );
     root.append(board);

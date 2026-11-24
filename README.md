@@ -79,7 +79,19 @@ bib,name,category,club
 
 Reimporting updates names, categories and clubs for results already received. **Lataa nykyinen CSV** (Download current CSV) downloads the active roster. With **Testisyöte** (Test feed) enabled, imports and results use a separate test race and the overlay displays **TESTI** (TEST).
 
-## Connect to VOLA timing
+## VOLA SQLite Bridge
+
+The separate [Ski Stream Bridge](https://github.com/ataskinen/ski-stream-bridge) reads the selected VOLA event's main and extra SQLite files on the timing PC. In race control choose **VOLA SQLite Bridge**, enter the timing PC's address, port (normally `8789`) and its generated connection key, then save and connect. Names, categories, clubs, birth years and competition name come from the bridge; CSV imports are disabled for this source.
+
+Select **Automatic race coverage** in the OBS source. A snapshot starts category Top 10 rotation immediately, using the category duration setting (normally 10 seconds). Enable **Testisyöte** when showing an archive. Results are synchronized without replaying old finish events. With start reading enabled, the bridge also supplies active racers and restores the standard automation: independent clocks, compact stacks, finish/DNF/DSQ holds, last-category standings and idle rotation. Results-only mode remains the default for archives. Live VOLA start-status mapping must be validated on the timing PC; the synthetic full-race demo is explicitly configured as a simulation.
+
+The client receives a full snapshot on connect, applies subsequent deltas atomically and requests a fresh snapshot after any revision gap. It reconnects after a connection loss. Database errors preserve the last received results and mark the connection stale. Only use this unencrypted WebSocket connection on a trusted local network. Connection keys are stored in the local service configuration and are never sent to overlay display pages.
+
+Standings switch automatically per category: first-heat times remain until the first valid combined finish in that category, then only valid combined finishers are ranked. Other categories stay on their own heat. Running clocks include the completed earlier heat time. No operator needs to switch standings during a normal cumulative-time race.
+
+Rebuild and reinstall this plugin version before using the bridge option. The WebSocket dependency is bundled with the plugin.
+
+## Connect to legacy VOLA timing
 
 [Kiril's original program](https://github.com/jovchev/vola-skialppro-text-overlay) reads names from VOLA's SQLite database, listens for timing events on TCP port 5409 and writes three text files. It does not expose its own database or HTTP service.
 
@@ -163,6 +175,7 @@ HTTP / JSON mode accepts a separate service URL and polling interval. Use it wit
 Run the service without OBS using Node.js 20 or newer:
 
 ```bash
+npm ci
 node server.mjs
 ```
 
@@ -173,6 +186,7 @@ If race control does not open, check `service.log` and the OBS log's `SkiRaceOve
 Rebuild the package after source changes. You need OBS 33.0.1, Apple's C++ compiler and an arm64 Node.js runtime with its matching LICENSE file:
 
 ```bash
+npm ci
 bash scripts/build-plugin.sh
 ```
 
@@ -214,6 +228,7 @@ Retain the matching dependency directories from that build for `-DependencyPrefi
 From the project root in PowerShell, using your actual SDK and Node paths:
 
 ```powershell
+npm ci
 .\scripts\build-plugin-windows.ps1 `
   -ObsSdkDir 'C:\obs-sdk-33.0.1-x64' `
   -DependencyPrefix 'C:\path\to\obs-dependencies' `

@@ -131,15 +131,17 @@
             <label for="mode">Tietolähde</label
             ><select id="mode" name="mode">
               <option value="demo">Demo</option>
+              <option value="bridge">VOLA SQLite Bridge</option>
               <option value="tcp">TCP-yhteys</option>
               <option value="http-json">HTTP / JSON -syöte</option>
             </select>
-            <div data-modes="tcp">
-              <label for="protocol">TCP-tietomuoto</label
+            <div data-modes="tcp bridge">
+              <div data-modes="tcp"><label for="protocol">TCP-tietomuoto</label
               ><select id="protocol" name="protocol">
                 <option value="vola">VOLA / NR-protokolla (kokeellinen)</option>
                 <option value="jsonl">JSON-viestit riveittäin</option>
               </select>
+              </div>
               <div class="field-pair">
                 <div>
                   <label for="host">IP-osoite tai palvelimen nimi</label
@@ -162,7 +164,7 @@
                   />
                 </div>
               </div>
-              <details class="source-links">
+              <details class="source-links" data-modes="tcp">
                 <summary>VOLA-tapahtumakoodit (lisäasetukset)</summary>
                 <label for="vola-status-map"
                   >Koodien merkitykset JSON-muodossa</label
@@ -199,7 +201,12 @@
                 value="1000"
               />
             </div>
-            <div data-modes="tcp http-json">
+            <div data-modes="bridge">
+              <label for="bridgeKey">Bridge connection key</label>
+              <input id="bridgeKey" type="password" autocomplete="off" />
+              <p class="hint">Default port: 8789. Copy the key from the bridge. Names, clubs, birth years and results come from VOLA. Supports race automation when start reading is enabled in the bridge. Validate the live VOLA mapping before racing.</p>
+            </div>
+            <div data-modes="tcp http-json bridge">
               <label class="checkbox-label" for="test-feed"
                 ><input
                   type="checkbox"

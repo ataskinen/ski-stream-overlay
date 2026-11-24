@@ -1,3 +1,5 @@
+import { syncBridgeRace } from "./lib/bridge-race.mjs";
+import { connectBridge } from "./lib/bridge.mjs";
 import http from "node:http";
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import path from "node:path";
@@ -11,6 +13,7 @@ import { attachParentControl } from "./lib/parent-control.mjs";
 const root = path.dirname(fileURLToPath(import.meta.url));
 export const defaultConfig = {
   mode: "demo",
+  bridgeKey: "",
   protocol: "jsonl",
   host: "127.0.0.1",
   port: 5409,
@@ -69,7 +72,7 @@ function configFor(input) {
   if (typeof c.testFeed !== "boolean")
     throw new Error("Test feed must be true or false.");
   if (
-    !["demo", "tcp", "http-json"].includes(c.mode) ||
+    !["demo", "tcp", "http-json", "bridge"].includes(c.mode) ||
     !["jsonl", "vola"].includes(c.protocol)
   )
     throw new Error("Choose a supported mode and protocol.");
@@ -82,6 +85,8 @@ function configFor(input) {
     throw new Error(
       "Enter a hostname or IPv4 address without a scheme or port.",
     );
+  if (typeof c.bridgeKey !== "string" || c.bridgeKey.length > 512 || /[\s\x00-\x1f]/.test(c.bridgeKey) || (c.mode === "bridge" && c.bridgeKey.length < 24))
+    throw new Error("Enter the bridge connection key (at least 24 characters).");
   c.port = Number(c.port);
   c.pollIntervalMs = Number(c.pollIntervalMs);
   if (!Number.isInteger(c.port) || c.port < 1 || c.port > 65535)
@@ -147,6 +152,7 @@ export async function createApp({
     feedGeneration = 0,
     demoTimer,
     demoStep = 0;
+  let bridgeCompetition = null;
   const clients = new Set();
   let writeQueue = Promise.resolve();
   function persist() {
@@ -173,7 +179,8 @@ export async function createApp({
           : roster;
     return {
       mode: config.mode,
-      eventName: config.eventName,
+      eventName: bridgeCompetition?.name ?? config.eventName,
+      bridgeCompetition,
       discipline: config.discipline,
       presentationSettings: Object.fromEntries(
         Object.keys(presentationDefaults).map((key) => [key, config[key]]),
@@ -206,10 +213,19 @@ export async function createApp({
   function setupFeed(nextConfig = config) {
     stopActiveFeed();
     config = nextConfig;
+    bridgeCompetition = null;
     const generation = feedGeneration;
     const destination = config.testFeed ? testRace : live;
     live.stale();
     testRace.stale();
+    if (config.mode === "bridge") {
+      destination.results.clear();
+      destination.active.clear();
+      destination.terminalQueue = [];
+      destination.lastTerminal = null;
+      if (config.testFeed) testRoster = [];
+      else roster = [];
+    }
     connection = {
       status: "idle",
       message:
@@ -219,13 +235,19 @@ export async function createApp({
       lastReceivedAt: null,
     };
     if (config.mode !== "demo")
-      stopFeed = feedConnector(
+      stopFeed = (config.mode === "bridge" ? connectBridge : feedConnector)(
         config,
         (event) => {
           if (generation !== feedGeneration) return;
-          destination.apply(event, Date.now(), config);
+          if (event.type === "bridge-state") {
+            bridgeCompetition = event.state.competition;
+            const people = Object.values(event.state.competitors);
+            if (config.testFeed) testRoster = people;
+            else roster = people;
+            syncBridgeRace(destination, event, config);
+          } else destination.apply(event, Date.now(), config);
           connection.lastReceivedAt = Date.now();
-          persist().catch(() => {
+          if (!event.heartbeat) persist().catch(() => {
             if (generation !== feedGeneration) return;
             connection.status = "error";
             connection.message = "Could not save results";
@@ -358,6 +380,7 @@ export async function createApp({
         const next = configFor({ ...config, ...input });
         const feedSettings = [
           "mode",
+          "bridgeKey",
           "protocol",
           "host",
           "port",
@@ -381,6 +404,8 @@ export async function createApp({
         await persist();
         return json(response, 200, next);
       }
+      if (request.method === "POST" && ["/api/roster", "/api/roster/fetch"].includes(route) && config.mode === "bridge")
+        throw new Error("The bridge provides the competitor list. Edit it in VOLA.");
       if (request.method === "POST" && route === "/api/roster") {
         const generation = feedGeneration;
         const destinationIsTest = config.testFeed;

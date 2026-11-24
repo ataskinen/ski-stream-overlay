@@ -40,6 +40,8 @@ Copy-Item -LiteralPath $NodeLicense -Destination (Join-Path $Runtime 'LICENSE')
 Copy-Item -LiteralPath (Join-Path $ProjectRoot 'native\COPYING') -Destination (Join-Path $Data 'COPYING')
 foreach ($File in @('server.mjs', 'package.json')) { Copy-Item -LiteralPath (Join-Path $ProjectRoot $File) -Destination $App }
 foreach ($Folder in @('lib', 'public', 'examples', 'simulator')) { Copy-Item -LiteralPath (Join-Path $ProjectRoot $Folder) -Destination $App -Recurse }
+New-Item -ItemType Directory -Force -Path (Join-Path $App 'node_modules') | Out-Null
+Copy-Item -LiteralPath (Join-Path $ProjectRoot 'node_modules\ws') -Destination (Join-Path $App 'node_modules') -Recurse
 $Zip = Join-Path $ProjectRoot 'dist\SkiRaceOverlay-windows-x64.zip'
 Compress-Archive -LiteralPath $Package -DestinationPath $Zip -Force
 Write-Host "Built $Zip"

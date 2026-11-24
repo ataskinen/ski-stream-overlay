@@ -48,6 +48,8 @@ node_license="$(dirname "$node_binary")/../LICENSE"
 if [[ ! -f "$node_license" ]]; then echo "Node.js LICENSE file missing beside runtime installation." >&2; exit 1; fi
 cp "$node_license" "$bundle/Contents/Resources/runtime/LICENSE"
 cp "$project_root/server.mjs" "$project_root/package.json" "$bundle/Contents/Resources/app/"
+mkdir -p "$bundle/Contents/Resources/app/node_modules"
+cp -R "$project_root/node_modules/ws" "$bundle/Contents/Resources/app/node_modules/"
 cp -R "$project_root/lib" "$project_root/public" "$project_root/examples" "$project_root/simulator" "$bundle/Contents/Resources/app/"
 codesign --force --sign - "$bundle/Contents/Resources/runtime/node"
 codesign --force --sign - "$bundle"

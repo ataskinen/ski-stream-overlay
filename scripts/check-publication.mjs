@@ -18,6 +18,7 @@ const rootFiles = new Set([
   "PROTOCOL.md",
   "LICENSE",
   "package.json",
+  "package-lock.json",
   ".gitignore",
   "publication-files.json",
 ]);

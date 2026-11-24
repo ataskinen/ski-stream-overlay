@@ -821,3 +821,24 @@ test("birth year joins club below the skier name without empty separators", asyn
     );
   }
 });
+
+test("bridge standings label total vs single heat and mark retained stale results", async t => {
+  const { root, send } = await overlayHarness(t, "/overlay/top10", "?category=U12&scenario=bridge-total");
+  const base = { mode: "bridge", categories: ["U12"], results: [], connection: { status: "connected" }, bridgeCompetition: { heats: [1, 2], ranking: "total" } };
+  send(base);
+  assert.equal(root.querySelector(".leaderboard-kicker").textContent, "YHTEISAJAT");
+  assert.match(root.querySelector(".board-footer").textContent, /1 \+ 2 · yhteisajat/);
+  send({ ...base, bridgeCompetition: { heats: [2], ranking: "heat" } });
+  assert.equal(root.querySelector(".leaderboard-kicker").textContent, "YHDEN LASKUN AJAT");
+  assert.match(root.querySelector(".board-footer").textContent, /Laskut 2 · laskuajat/);
+  send({ ...base, connection: { status: "stale" } });
+  assert.match(root.querySelector(".board-footer").textContent, /viimeksi vastaanotetut tulokset/);
+});
+
+
+test("automatic category standings label the selected category rather than the event's latest heat", async t => {
+ const {root,send}=await overlayHarness(t,"/overlay/top10","?category=U12&scenario=category-auto");
+ const base={mode:"bridge",categories:["U10","U12"],results:[],connection:{status:"connected"},bridgeCompetition:{heats:[1,2],ranking:"total",categoryStandings:[{category:"U10",heats:[1,2],ranking:"total"},{category:"U12",heats:[1],ranking:"heat"}]}};
+ send(base);assert.equal(root.querySelector(".leaderboard-kicker").textContent,"YHDEN LASKUN AJAT");assert.match(root.querySelector(".board-footer").textContent,/Laskut 1 · laskuajat/);
+ base.bridgeCompetition.categoryStandings[1]={category:"U12",heats:[1,2],ranking:"total"};send(base);assert.equal(root.querySelector(".leaderboard-kicker").textContent,"YHTEISAJAT");
+});

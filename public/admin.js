@@ -91,6 +91,7 @@ function render(state) {
     disconnected: "Ei yhteyttä",
     error: "Yhteysvirhe",
     stopped: "Pysäytetty",
+    stale: "Tiedot eivät päivity",
     paused: "Demo pysäytetty",
     demo: "Demo käytössä",
   };
@@ -125,7 +126,8 @@ function render(state) {
     "Connecting to HTTP timing feed": "Yhdistetään HTTP-ajanottosyötteeseen",
   };
   $("connection-message").textContent =
-    messages[state.connection?.message] || state.connection?.message || "";
+    (messages[state.connection?.message] || state.connection?.message || "") +
+    (state.bridgeCompetition?.warnings?.length ? " · " + state.bridgeCompetition.warnings.join(" ") : "");
   const previous = $("category").value;
   const categories = (state.categories || []).filter((category) =>
     category.trim(),
@@ -173,7 +175,7 @@ function render(state) {
         row.bib,
         row.name || "",
         row.category || "",
-        ["dnf", "dsq"].includes(row.status)
+        ["dns", "dnf", "dsq"].includes(row.status)
           ? row.status.toUpperCase()
           : formatTime(row.timeMs),
       ])
@@ -199,6 +201,7 @@ $("config-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const config = {
     mode: $("mode").value,
+    bridgeKey: $("bridgeKey").value.trim(),
     protocol: $("protocol").value,
     host: $("host").value.trim(),
     port: Number($("port").value),
@@ -367,6 +370,7 @@ request("/api/config")
       $("event-name").value = config.eventName || "";
     for (const id of [
       "mode",
+      "bridgeKey",
       "protocol",
       "host",
       "port",
